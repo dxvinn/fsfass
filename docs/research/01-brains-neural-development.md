@@ -570,3 +570,219 @@ blocking, extinction and renewal like a spiking amygdala does?"), not for runnin
 - What we should NOT integrate: the node-net runtime / web UI.
 - Scalability: all tiers.
 
+## 4. Candidate systems — D. Curiosity, intrinsic motivation and goal formation
+
+### Intrinsic Curiosity Module (pathak22/noreward-rl)
+- URL: https://github.com/pathak22/noreward-rl
+- License: MIT (per repo LICENSE file listing)
+- Language: Python (TensorFlow 1)
+- Activity/maintenance: archival (10 commits, 2017 paper code); ~1.5k stars
+- Architecture: Pathak et al. 2017 (ICML). Learn a feature encoder φ via an *inverse model* (predict action
+  from φ(s_t), φ(s_t+1)) so features ignore things the agent can't affect; a *forward model* predicts
+  φ(s_t+1) from φ(s_t), a_t; intrinsic reward = η/2 · ‖φ̂(s_t+1) − φ(s_t+1)‖².
+- Scientific concept modeled: curiosity as prediction error on controllable features.
+- Computational cost: two small networks per step — too much per creature at scale.
+- What we can learn: the inverse-model trick is the important idea: **be curious only about what your
+  actions influence** (avoids the "noisy TV" trap — a creature staring at a waterfall forever). In symbolic
+  form: novelty bonus only for (action, object) pairs whose outcome is uncertain *and* action-dependent.
+- What we could integrate: idea; MIT code if prototyping.
+- What we should NOT integrate: per-creature deep forward models.
+- Scalability: idea: all tiers.
+
+### Random Network Distillation (openai/random-network-distillation)
+- URL: https://github.com/openai/random-network-distillation
+- License: unverified (licence file not retrievable); repository archived 2026-04-08
+- Language: Python (TensorFlow)
+- Activity/maintenance: archived; ~930 stars
+- Architecture: Burda et al. 2018. A fixed random network f maps observations to features; a predictor
+  network g is trained to match f; intrinsic reward = ‖g(s) − f(s)‖². Frequently seen states are well
+  predicted → low novelty. It is a learned, generalising *visit counter*.
+- Scientific concept modeled: novelty / count-based exploration.
+- Computational cost: two small nets per step.
+- What we can learn: the cheap equivalent is count-based novelty: bonus = c / sqrt(1 + n(concept or
+  place)) using the visit counts we already store on graph nodes; generalisation comes from concept similarity.
+- What we could integrate: count-based version (trivial).
+- What we should NOT integrate: networks.
+- Scalability: count version all tiers.
+
+### Explauto (Inria FLOWERS): IAC, R-IAC, goal babbling
+- URL: https://github.com/flowersteam/explauto
+- License: GPL-3.0 (flag)
+- Language: Python
+- Activity/maintenance: dormant; latest commit 2020-07-16; ~70 stars
+- Architecture: Oudeyer, Kaplan & Hafner 2007 IAC ("Intrinsic Motivation Systems for Autonomous Mental
+  Development", IEEE TEC): sensorimotor space is recursively split into regions (split when a region holds too
+  many exemplars, choosing the cut that maximises dissimilarity of children); each region keeps a history
+  of prediction errors; **learning progress** LP = (mean error over older window) − (mean error over recent
+  window); the agent picks regions with highest LP (with ε-random). R-IAC (Baranes & Oudeyer 2009) adds
+  multi-resolution regions and goal-space exploration. Goal babbling (SAGG-RIAC) samples *goals* in outcome
+  space instead of motor commands.
+- Scientific concept modeled: developmental curiosity; self-organised curricula ("Playground Experiment":
+  a robot dog autonomously went from flailing → biting → "talking" to another robot).
+- Computational cost: per decision O(#regions) ≈ tens of floats; per outcome: append error to one region.
+- What we can learn: **learning progress is the best single curiosity signal for believable development**:
+  children ignore both trivially mastered and hopelessly hard things and gravitate to the "zone of proximal
+  development". Mastered topics become boring → developmental stages appear on their own.
+- What we could integrate: the algorithm (re-implement; GPL code must not be copied).
+- What we should NOT integrate: any explauto source.
+- Scalability: ~10–30 coarse "skill regions" per creature → all tiers down to LOD2.
+
+### ALP-GMM teacher (flowersteam/teachDeepRL) and MAGELLAN
+- URL: https://github.com/flowersteam/teachDeepRL ; https://github.com/flowersteam/MAGELLAN
+- License: MIT (both)
+- Language: Python
+- Activity/maintenance: teachDeepRL ~94 stars (2019 paper code, date unverified); MAGELLAN ~15 stars (2025)
+- Architecture: Portelas et al. 2019: track absolute learning progress |competence_now − competence_before|
+  per sampled task parameter; fit a Gaussian mixture over (task-params, ALP); sample new tasks from components
+  with high mean ALP (plus 20% random). MAGELLAN (Gaston et al. 2025) lets an LLM agent predict its own
+  competence and LP over a large language-described goal space by generalising across semantically similar goals.
+- Scientific concept modeled: automatic curriculum learning; metacognitive estimation of one's own progress.
+- Computational cost: ALP bookkeeping is trivial; GMM refits occasional.
+- What we can learn: **absolute** LP also captures *forgetting* (competence dropping → renewed interest),
+  e.g. an elder returns to practising a skill once it begins to fade. MAGELLAN shows how an LLM-backed focal
+  agent could pick self-goals ("learn to fish") using LP estimates the deterministic sim exports.
+- What we could integrate: ALP formula; the "teacher" idea for parent creatures selecting tasks for children.
+- What we should NOT integrate: GMM/LLM machinery for background agents.
+- Scalability: ALP: all tiers; MAGELLAN-like: LOD0 only.
+
+### Empowerment (concept block)
+- URL: no canonical repo verified; key papers: Klyubin, Polani & Nehaniv 2005 ("Empowerment: a universal
+  agent-centric measure of control"); Salge, Glackin & Polani 2014 review; Mohamed & Rezende 2015 (variational).
+- License: n/a
+- Language: n/a
+- Activity/maintenance: active research area.
+- Architecture: empowerment = channel capacity between an agent's n-step action sequences and its resulting
+  future state, max_p(a) I(A; S'). In deterministic discrete worlds it collapses to log2(number of distinct
+  states reachable in n steps).
+- Scientific concept modeled: drive to keep options open / gain control (cf. competence urge, autonomy).
+- Computational cost: exact = exponential in n; heuristic = count reachable cells via BFS (n≤3) ~ hundreds of ops.
+- What we can learn: a cheap "stay where you have options" pressure produces lifelike behaviour: avoid corners
+  and cliffs, prefer holding tools, value money/allies (all increase reachable futures).
+- What we could integrate: proxy features (tools held, allies near, exits available) as an empowerment term.
+- What we should NOT integrate: exact computation.
+- Scalability: proxy: all tiers.
+
+## 5. Candidate systems — E. Development, schemas, social cognition, language
+
+### Drescher's Schema Mechanism (hqm/jschema; also SimHacker/moollm schema skill)
+- URL: https://github.com/hqm/jschema (primary reference: Drescher 1991, *Made-Up Minds*, MIT Press;
+  AAAI-87 paper https://cdn.aaai.org/AAAI/1987/AAAI87-052.pdf)
+- License: unverified (no licence shown)
+- Language: Java (Processing + jbox2d microworld, JRuby console)
+- Activity/maintenance: tiny (0 stars); date unverified
+- Architecture: knowledge = **schemas**: (context items) — action → (result items). Every schema keeps an
+  *extended context* and *extended result*: for every other binary item, statistics of how often the result
+  follows the action when that item is on vs. off ("marginal attribution"). When an item is significantly
+  more relevant, the mechanism *spins off* a more specific schema (adding the item to context or result).
+  Reliable schemas can be chained into composite actions (goal-directed plans). When a schema is unreliable
+  but sometimes works, the mechanism invents a **synthetic item** — a new hidden concept meaning "whatever
+  makes this schema work" — which is how it re-derived object permanence (an item standing for "the object
+  is there though unseen"). Recent work "Schema Mechanisms 2.0 for Developmental AI" (Springer 2025) revisits it.
+- Scientific concept modeled: Piagetian sensorimotor development; constructivist causal learning;
+  object permanence emerging from experience.
+- Computational cost: the original is very expensive (statistics for every item × every schema); bounded
+  versions with sparse candidate items are affordable.
+- What we can learn: our action→outcome edges with context conditions *are* schemas. Two valuable
+  mechanisms: (1) **marginal attribution** = keep per-edge counts conditioned on a few candidate context
+  features, spin off a context-specific edge when a feature is predictive ("fire burns *when touched*, not when
+  near"); (2) **synthetic items** as a principled way for a creature to invent hidden causes (spirits, curses,
+  germs!) — a gift for emergent superstition/religion in a god game.
+- What we could integrate: algorithm, bounded (top-k candidate context features, spin-off thresholds).
+- What we should NOT integrate: unbounded statistics over all items.
+- Scalability: bounded: 1k–100k; synthetic-item invention only LOD0/LOD1.
+
+### Machine Theory of Mind / ToMnet (CILAB-MA/Machine_ToM; variants Nik-Kras/ToMnet-N)
+- URL: https://github.com/CILAB-MA/Machine_ToM ; https://github.com/Nik-Kras/ToMnet-N
+- License: MIT (Machine_ToM); ToMnet-N unverified
+- Language: Python
+- Activity/maintenance: small reimplementations (~27 stars); dates unverified
+- Architecture: Rabinowitz et al. 2018 (ICML), "Machine Theory of Mind": a *character net* embeds past
+  trajectories of a particular agent into e_char; a *mental-state net* embeds the current episode into
+  e_mental; a *prediction net* predicts next action, goal consumption and successor representation.
+  Trained by meta-learning across populations of agents; passes a Sally–Anne-style false-belief test.
+- Scientific concept modeled: learned ToM; individual "character" embeddings.
+- Computational cost: neural — offline only.
+- What we can learn: the clean decomposition *trait model (slow, per individual) + current mental-state
+  model (fast, per episode)* is what each creature should hold about others. Ours: per-known-individual
+  small record (traits: aggressiveness, generosity, reliability as HGF beliefs) + current belief/goal guess.
+- What we could integrate: decomposition; MIT code not needed.
+- What we should NOT integrate: neural ToM per creature.
+- Scalability: decomposition: all tiers (cap number of modelled individuals, Dunbar-like ~5/15/50/150 layers).
+
+### Bayesian inverse planning: Plinf.jl (and the BToM tradition)
+- URL: https://github.com/ztangent/Plinf.jl
+- License: unverified (licence file not retrievable)
+- Language: Julia (Gen probabilistic programming + PDDL)
+- Activity/maintenance: latest commit 2023-10-21; ~44 stars (successor work moved to related packages by the
+  same author — unverified)
+- Architecture: Baker, Saxe & Tenenbaum 2009 / 2017 ("Rational quantitative attribution of beliefs, desires
+  and percepts"): observers assume others act approximately rationally (Boltzmann: P(a|g) ∝ exp(β·Q_g(a)));
+  goal posterior P(g | actions) ∝ P(g) Π P(a_t | g). Plinf (Zhi-Xuan et al. 2020, "Online Bayesian Goal
+  Inference for Boundedly-Rational Planning Agents") models the observed agent as a *bounded* planner
+  (partial search, replanning) and does sequential inverse planning with particle filtering, so it can infer
+  goals even from failed or suboptimal plans.
+- Scientific concept modeled: theory of mind as inverse planning; goal and belief attribution.
+- Computational cost: per observer per observed agent: O(#candidate goals × cost of evaluating Q) per step.
+  With 3–8 candidate goals and cheap distance-based Q, ~100 flops.
+- What we can learn: a tiny version is very affordable: "the stranger walks toward our granary, not toward
+  the well → he probably wants grain" — with Q approximated by path-distance reduction toward each goal.
+  Enables suspicion, helping and deception to emerge.
+- What we could integrate: the Bayesian goal-update rule with 3–8 hypotheses from a goal vocabulary.
+- What we should NOT integrate: Gen/PDDL planning at runtime.
+- Scalability: 1k agents × 5 watched others fine; 100k only for agents in active social encounters.
+
+### EGG (Emergence of lanGuage in Games) and naming-game frameworks (Babel2)
+- URL: https://github.com/facebookresearch/EGG ; https://github.com/dwarfmaster/Babel2
+- License: EGG MIT (parts BSD-3), archived 2026-08-10; Babel2 Apache-2.0
+- Language: EGG Python (PyTorch); Babel2 Common Lisp
+- Activity/maintenance: EGG archived (~320 stars); Babel2 mirror ~7 stars, date unverified
+- Architecture: EGG: sender/receiver neural agents trained (REINFORCE or Gumbel-softmax) to communicate over a
+  discrete channel in referential/reconstruction games. Babel2 (Steels' group): language games incl. the
+  **naming game** — each agent keeps a lexicon of (word, meaning, score); speaker names a topic with its
+  highest-scoring word (inventing one if none); on success both raise that word's score and *lower competing
+  words* (lateral inhibition); on failure the speaker lowers it and the hearer adopts the word. A population
+  converges to a shared vocabulary with no central authority. Fluid Construction Grammar extends to grammar.
+- Scientific concept modeled: cultural emergence of conventions, lexicons, grammar.
+- Computational cost: naming game: a hash-map lookup and a few score updates per interaction.
+- What we can learn: **naming-game lexicons are the right cheap model of language for us** — each creature's
+  words are just more nodes in its associative graph, linked to concepts with scores; dialects and language
+  drift emerge between isolated villages; a parent's word "HOT!" becomes a learned cue for danger.
+- What we could integrate: naming game + lateral inhibition (trivial to re-implement); Apache/MIT safe.
+- What we should NOT integrate: neural emergent-communication training per creature.
+- Scalability: all tiers (lexicon capped, e.g. 50–2000 words by age/LOD).
+
+### Minigrid / BabyAI (Farama-Foundation/Minigrid)
+- URL: https://github.com/Farama-Foundation/Minigrid
+- License: MIT
+- Language: Python
+- Activity/maintenance: active; latest commit 2026-09-10; ~2.5k stars
+- Architecture: lightweight grid-worlds (keys, doors, balls, boxes, lava) under the Gymnasium API; BabyAI
+  levels issue synthetic grounded-language instructions with a curriculum and a "bot" expert for imitation.
+- Scientific concept modeled: grounded language learning, sample efficiency, curriculum.
+- Computational cost: environment only.
+- What we can learn: BabyAI's central finding — learning grounded language from scratch is enormously
+  sample-hungry (hundreds of thousands of demonstrations) — is a warning: do not try to *learn* language
+  neurally inside creatures. Use symbolic grounding (naming game) and leave fluent language to the LLM layer.
+- What we could integrate: as a **test harness** for prototyping creature brains offline in a headless grid
+  (lava = fire!) before integrating.
+- What we should NOT integrate: as runtime.
+- Scalability: N/A.
+
+### iCub software (robotology/icub-main) and developmental robotics
+- URL: https://github.com/robotology/icub-main
+- License: mixed GPL-2.0 and BSD (per repo; per-file — flag)
+- Language: C++ (YARP middleware)
+- Activity/maintenance: maintained; ~120 stars; date unverified
+- Architecture: control, perception and kinematics stack for the iCub child-sized humanoid; research on top
+  includes developmental curricula (reaching → grasping → tool use), imitation, joint attention and
+  ERA ("Epigenetic Robotics Architecture", Morse et al. 2010: self-organising maps for each modality linked
+  by Hebbian associations through a body-posture "hub", which reproduces infants' A-not-B and word-learning
+  binding effects).
+- Scientific concept modeled: embodied development, sensorimotor contingencies, joint attention.
+- Computational cost: real-robot stack — irrelevant.
+- What we can learn: ERA is a nice cheap mechanism: **Hebbian links between modality maps via a shared hub**
+  explain how a word heard while looking at an object gets bound, and how habits cause A-not-B errors.
+- What we could integrate: ideas only (GPL portions).
+- What we should NOT integrate: the robot stack.
+- Scalability: N/A.
+
