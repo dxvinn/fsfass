@@ -842,3 +842,307 @@ blocking, extinction and renewal like a spiking amygdala does?"), not for runnin
 | Minigrid / BabyAI | MIT | No (test harness) | offline testbed; warning on neural language learning |
 | iCub / ERA | GPL-2/BSD | idea | Hebbian hub binding, A-not-B |
 
+## 8. Recommended abstraction for our creatures: the "Associative Mind Graph" (AMG)
+
+Design goal: the cheapest machinery in which *fire → pain → lifelong caution* (and hundreds of similar
+stories) emerges from experience, is inspectable by designers and the LLM narrator, is deterministic, and
+degrades gracefully across LOD tiers. No rule anywhere says "if fire: avoid".
+
+### 8.1 Representation
+
+**World concept vocabulary (shared, global).** Every perceivable or experienceable thing maps to a concept
+ID: percept categories (FIRE, SMOKE_SMELL, CRACKLE, WOLF, RED_BERRY), outcome/"unconditioned" concepts with
+innate valence (PAIN −1.0, BURN −1.0, SATIATION +0.6, WARMTH +0.3, COMFORT +0.5, FALL −0.7, NAUSEA −0.8),
+actions (TOUCH, APPROACH, EAT, FLEE, HIDE, GIVE), places (landmarks), individuals (agent IDs), words
+(lexicon tokens), and *synthetic* concepts invented by creatures (Drescher-style hidden causes). Each
+concept carries a 64-bit **feature signature** (hash of features such as glowing, hot, orange, moving,
+furry, large-teeth). Similarity = 1 − Hamming/64, used for generalisation to never-seen things. Only outcome
+concepts have hard-coded valence; everything else acquires value through learning. This vocabulary is the
+one place where authoring leaks in — keep it *perceptual*, never behavioural (FIRE yes, DANGEROUS_THING no).
+
+**Per-creature state (structure-of-arrays, fixed-point int16 weights with scale 1/4096):**
+
+| Component | Contents | Size (adult human, LOD0/LOD1) |
+|---|---|---|
+| Node table | known concept IDs, last-active tick, activation intensity, Pearce–Hall associability α_i, visit count n_i | ~8 B × 500–5000 nodes |
+| Edge table (sorted by source) | target, w_fast, w_slow, evidence count, flags (flashbulb, crystallised, taught-by, context-specific), last-used tick | ~12 B × 2k–50k edges |
+| Extinction table | (cue, context) → w_ext | ~6 B × 100–1000 |
+| Habit cache | (context-cluster, action) → Q_MF, plus reliability EMA | ~6 B × 200–2000 |
+| Workspace | K slots of concept refs + salience | ≤ 8 × 4 B |
+| Drives & modulators | 10 drives (u8) + arousal, mood, tonic dopamine, fatigue | ~16 B |
+| Episodic buffer | ring of salient events: tick, place, ≤4 cues, action, outcome, δ, valence | 32 B × 16–2000 |
+| Social models | per known individual: trait beliefs (HGF μ,σ for trust/aggression/generosity), last goal guess, "has seen" tags | 32–64 B × 5–150 |
+| Lexicon | (word, concept, score) | ~8 B × 50–2000 |
+| Learning-progress regions | per skill region: two error EMAs | 8 B × 10–30 |
+
+**Priors and deltas.** Each creature's effective weight is w = w_prior(species, culture) + w_delta(own).
+The species prior encodes instincts and *prepared* associability (primates: snakes ×3 learning rate, not
+innate fear — matching Öhman & Mineka's preparedness findings); the culture prior encodes taught common
+knowledge. Only deltas are stored per creature (copy-on-write). This is the single biggest memory saving and
+also how culture enters the brain.
+
+**Eligibility without per-edge traces.** Eligibility lives on the *source node*:
+e_i(t) = I_i · exp(−(t − t_active_i)/τ_e), computed lazily via a lookup table when an outcome happens.
+This is Izhikevich's distal-reward trace / Creatures' susceptibility at node granularity — no per-tick cost.
+
+### 8.2 Learning rules (all prediction-error driven; "learn only what surprised you")
+
+1. **Pavlovian (cue → outcome), Rescorla–Wagner with summed prediction.** When an outcome concept j
+   occurs with intensity I_j (or is *expected* but fails to occur):
+   P_j = Σ_i e_i · w_ij over eligible cues i (plus similarity-weighted generalisation from neighbours);
+   δ_j = λ(I_j) − P_j;
+   Δw_fast_ij = clamp(α_age · α_i · κ_sign(δ) · prep_i) · δ_j · e_i.
+   κ_− > κ_+ gives negativity bias (one burn outweighs one pleasant warmth); prep_i is species preparedness.
+2. **Attention (Pearce–Hall).** α_i ← γ·|δ| + (1−γ)·α_i, γ≈0.3. Novel cues start at α=1 (attention to new
+   things); boring repeated cues drop (latent inhibition — pre-exposed things are learned about slowly).
+3. **Temporal chaining (TD).** If a cue i predicts another cue k that itself carries value V_k, update the
+   predictive edge i→k and propagate value: V_i ← V_i + α·(γ·V_k − V_i). Smoke smell → fire → pain.
+4. **Extinction is new, context-gated learning.** When δ < 0 for a cue with w > 0, update
+   w_ext(cue, context) instead of w (context = coarse place/situation cluster, e.g. HEARTH, FOREST, VILLAGE).
+   w_ext decays faster than w. Net fear output = max(0, w − w_ext(ctx)). This yields renewal, spontaneous
+   recovery and reinstatement (Bouton), mirroring the amygdala/ITC circuit.
+5. **Instrumental (context, action → outcome) schemas.** The same Pavlovian rule on composite source nodes
+   "ACTION|CUE" (e.g. TOUCH|FIRE). Marginal attribution (Drescher): each such edge keeps success counts
+   conditioned on ≤3 candidate context features; if one feature makes the outcome much more reliable, spin
+   off a specific edge (TOUCH|FIRE → BURN is reliable; APPROACH|FIRE → BURN is not, but APPROACH|FIRE|COLD →
+   WARMTH is).
+6. **Habits (model-free).** After each action, Q_MF(ctx, a) += η_hab · (r + γ·V(next) − Q_MF). Reliability
+   R_MF = 1 − EMA(|RPE|). Habit strength also grows with repetition count (overtraining).
+7. **Two-timescale consolidation (sleep).** During sleep, replay the top-N episodic events by
+   |δ|·|valence| (+ recency): for each, transfer ρ·(w_fast − w_slow) into w_slow, with ρ = 0.3 + 0.6·tag,
+   tag = min(1, |δ|·I) (synaptic tagging: surprising, intense events consolidate strongly). w_fast then
+   relaxes toward w_slow with τ ≈ days. Very high tags set the *flashbulb* flag (forgetting τ ×10).
+8. **Forgetting.** w_slow decays toward the prior with τ_forget = τ_0 · (1 + log(1 + uses)) (ACT-R-like:
+   rehearsed knowledge persists), ×10 for flashbulb edges. Pruning removes edges with |w − prior| tiny.
+9. **Crystallisation (CLARION-style rule extraction).** When an edge has |w_slow| > 0.4, evidence ≥ 3 and
+   stable sign, mark it *explicit*: it becomes a sayable belief ("fire burns"), teachable to others and
+   visible to the LLM narrator.
+10. **Social / observational learning.** Seeing another creature experience an outcome after a cue applies
+    rule 1 with α × trust(observed) × 0.5 (observational fear learning, Olsson & Phelps 2007). Being *told*
+    ("HOT!" + pointing at fire, or a crystallised belief transmitted in conversation) writes an edge with
+    α × trust(speaker) and flag taught-by, capped at w ≤ 0.6 until confirmed by own experience.
+11. **Lexicon (naming game).** Hearing word W while concept C is in the workspace: score(W,C) += a; competing
+    words for C −= a·inhibition. Words become cues: WORD_HOT acquires PAIN prediction through rule 1 if
+    spoken before pain — this is how parental warnings work *mechanistically*.
+12. **Belief tracking (HGF-lite).** For a handful of important uncertain quantities (is the well reliable?
+    is Bran trustworthy?) keep μ, σ and a volatility estimate; precision-weighted update. Regime changes
+    (drought, betrayal) raise volatility → faster belief revision.
+
+### 8.3 Decision loop (runs every 0.5–2 s of game time, not every tick)
+
+1. **Perceive → activate.** Visible/heard things activate concept nodes with intensity (distance, size).
+   Unknown things activate their nearest known concepts by signature similarity (generalisation).
+2. **Workspace competition (GWT).** Candidates: active percepts, top drives, retrieved memories, current
+   goal. Salience = |predicted value| + novelty + drive relevance + social relevance. Top K win. Only
+   workspace items get full learning rate (others ×0.2) and enter planning. Attention narrows under high
+   arousal (K drops by 1–2).
+3. **Generate options** from affordances of workspace objects + current goal + habits (4–12 options).
+4. **Score each option.**
+   - Habit value Q_MF(ctx, a).
+   - Goal-directed value Q_MB(a) = Σ_o P(o | a, ctx) · U(o | drives), searched to depth d with beam 3 over
+     schema edges; U depends on current drives, so a sated creature stops valuing food instantly
+     (outcome-devaluation sensitivity — habits lack it).
+   - Pavlovian bias: approach-type actions toward cue c get +k_pav · V(c); negative V suppresses approach and
+     boosts flee/freeze (Pavlovian–instrumental transfer). Anxiety = large k_pav.
+   - Curiosity: c_LP · learning-progress(region of a) + c_nov / sqrt(1 + n) restricted to action-dependent
+     outcomes (ICM's lesson) + empowerment proxy.
+   - Persistence bonus for the incumbent action (basal-ganglia hysteresis); effort cost.
+5. **Arbitrate:** w_MB = sigmoid(b · (R_MB − R_MF) − cost_plan · fatigue); total = w_MB·Q_MB + (1−w_MB)·Q_MF +
+   Pavlovian + curiosity + persistence.
+6. **Select** with softmax (temperature from arousal/age/tonic dopamine) or a race (DDM-like) when the top
+   two are close → visible hesitation.
+7. **Act; on outcome, run learning rules; store episode if |δ| > θ_episode.**
+
+**Cost estimate (compiled, cache-friendly SoA):** activation ~20 nodes; workspace sort ~20 items;
+8 options × (1 + 3 + 9) lookahead nodes × ~6 edges ≈ 600 edge reads; learning ~50 edge writes on outcome
+events only. ≈ 2–6 µs per decision at LOD0/1, < 0.5 µs at LOD2 (no lookahead). At 1 decision/s/creature:
+10k LOD1 creatures ≈ 60 ms CPU per game-second on one core — fine with a job system; LOD3 never decides
+individually.
+
+### 8.4 Worked trace: the fire story, with numbers
+
+Parameters for **Ana, age 3**: α_age = 0.5, κ_− = 1.6, κ_+ = 1.0, τ_e = 2 s, θ_episode = 0.3,
+species prior HOT_SURFACE → BURN = 0.10, signature similarity(FIRE, HOT_SURFACE) = 0.4. FIRE is known only
+visually (humans have no innate fire fear; children are drawn to it), FIRE→BURN prior = 0.
+
+*Day 1, evening, at the hearth.*
+- t = 0.0 s: FIRE enters the workspace: never interacted with, n = 0 → novelty bonus 1.0; learning-progress
+  region "hot objects" is empty → high curiosity. Mother says "HOT!" (WORD_HOT, unknown word) at t = 0.5 s.
+- t = 1.2 s: Ana selects TOUCH (curiosity dominates; no Pavlovian fear yet).
+- t = 1.5 s: BURN occurs, intensity I = 0.9 → λ = 0.9.
+- Eligibilities: FIRE e = 1.0 (still visible); TOUCH|FIRE e = exp(−0.3/2) = 0.86; WORD_HOT e = exp(−1.0/2)
+  = 0.61; MOTHER/HEARTH are context (α × 0.1).
+- Prediction P_BURN = 0 + 0 + 0 + generalisation 0.4 × 0.10 = 0.04 → δ = 0.86 (huge surprise).
+- Novel cues have α_i = 1, so effective rate = min(1, 0.5 × 1 × 1.6) = 0.8:
+  - Δw(FIRE→BURN) = 0.8 × 0.86 × 1.0 = **0.69**
+  - Δw(TOUCH|FIRE→BURN) = 0.8 × 0.86 × 0.86 = **0.59**
+  - Δw(WORD_HOT→BURN) = 0.8 × 0.86 × 0.61 = **0.42** (the word now *means* danger)
+  - Δw(HEARTH→BURN) = 0.08 × 0.86 × 1 = 0.07 (slight unease about the hearth corner)
+- Pearce–Hall: α_FIRE ← 0.3 × 0.86 + 0.7 × 1 = 0.96 (stays attention-grabbing).
+- Episode stored (|δ| = 0.86 > 0.3): {hearth, [FIRE, WORD_HOT, MOTHER], TOUCH, BURN 0.9, δ 0.86}; tag =
+  min(1, 0.86 × 0.9) = 0.77 → flashbulb candidate. Crying raises COMFORT-seeking; mother's comfort follows →
+  MOTHER → COMFORT edge strengthens (attachment).
+- Lexicon: WORD_HOT co-occurred with FIRE in the workspace → score(HOT, FIRE) = 0.2.
+
+*Night 1, sleep consolidation.* ρ = 0.3 + 0.6 × 0.77 = 0.76 → w_slow(FIRE→BURN) = 0.52,
+w_slow(TOUCH|FIRE→BURN) = 0.45, w_slow(WORD_HOT→BURN) = 0.32; flashbulb flag set on the first two
+(tag > 0.7). The fast residue (0.17, 0.14, 0.10) fades over ~3 days.
+
+*Days 2–14.* Ana sees the hearth fire every evening. Pavlovian value V(FIRE) = 0.52 × |−1.0| → approach is
+suppressed (k_pav × 0.52) so she keeps ~2 m away. No burn occurs at 2 m → δ = −0.52 each evening → this goes
+into w_ext(FIRE, HEARTH) with α_ext = 0.5 × 0.3 = 0.15: after 10 evenings w_ext ≈ 0.52 × (1 − 0.85^10) ≈
+0.42 → net fear at the hearth 0.10: she is relaxed by the hearth. Crucially TOUCH|FIRE is *never tested
+again* because avoidance prevents it — so that edge never extinguishes (the classic reason avoidance-based
+fears persist).
+
+*Age 7.* Her little brother reaches for the fire. ToM level 2 + crystallised belief "fire burns" (|w| 0.45,
+evidence via observation of others) → she says "HOT!" (teaching). Her brother's WORD_HOT edge is now
+learned from *her* pain history — cultural transmission without anyone coding it.
+
+*Age 25, the forest fire.* 22 years later: w_slow(FIRE→BURN) decayed toward prior with flashbulb τ ≈ 60 y:
+0.52 × exp(−22/60) ≈ 0.36. Extinction w_ext(FIRE, HEARTH) is irrelevant here: context = FOREST,
+w_ext(FIRE, FOREST) = 0 → **renewal**: net fear = 0.36, × percept intensity clamp 1.5 for a huge blaze →
+V = −0.54. Meanwhile TD has made SMOKE_SMELL → FIRE predictive (learned over years of cooking) so she
+becomes anxious from the smell before seeing flames. Arbitration: novel, high-stakes, unreliable habits
+→ model-based planning dominates: FLEE options scored by distance-from-fire outcomes; she also pulls her
+child away (social goal). Nobody wrote `if fire: avoid`; and the same machinery lets her *cook* with fire
+daily, because at the hearth the extinction memory and the positive APPROACH|FIRE|COLD → WARMTH and
+COOK|FIRE → FOOD schemas outweigh the residual fear.
+
+*Generalisation bonus:* first sight of a lava flow: signature similarity to FIRE 0.7 → predicted BURN ≈
+0.7 × 0.36 = 0.25 → caution without any lava experience.
+
+### 8.5 Development: one brain, age-dependent parameters
+
+Ages for humans; animals scale by species maturity (e.g. a wolf "child" stage ≈ months).
+
+| Parameter | Infant 0–2 | Child 3–11 | Adolescent 12–19 | Adult 20–55 | Elder 56+ |
+|---|---|---|---|---|---|
+| Base learning rate α_age | 0.6 | 0.5 → 0.4 | 0.4 | 0.25 | 0.25 → 0.10 |
+| Aversive/appetitive asymmetry κ−/κ+ | 1.2 / 1.0 | 1.6 / 1.0 | 1.2 / 1.4 (reward-seeking) | 1.5 / 1.0 | 1.1 / 1.1 (positivity effect) |
+| Extinction learning rate α_ext | 0.2 | 0.3 | 0.12 (adolescent extinction deficit, Pattwell et al. 2012) | 0.3 | 0.2 |
+| Curiosity (LP + novelty) weight | 1.0 | 0.8 | 0.6 (social novelty high) | 0.35 | 0.2 |
+| Workspace slots K | 1–2 | 3 → 5 | 6–7 | 7 | 7 → 4 |
+| Planning depth d | 0 | 1 → 2 | 2–3 | 3–4 | 3 → 2 |
+| Pavlovian/impulse weight k_pav | 1.0 | 0.8 | 0.9 | 0.5 | 0.5 |
+| Habit learning η_hab / habit reliance | high reliance, no inhibition (A-not-B) | medium | medium | high (most routine) | very high |
+| Object persistence τ_obj (belief in unseen objects) | 2 s → minutes (≈ 8–18 months) | days | days | days | days, but more source confusion |
+| Theory-of-mind level | 0 → joint attention (~1 y) | level 1 at ~4–5 (false belief), level 2 ~7 | 2 | 2–3 | 2–3 |
+| Trust in parent / peer / prestige elder | 0.95 / 0.1 / 0.3 | 0.8 / 0.4 / 0.5 | 0.4 / 0.8 / 0.4 | self-weighted | self-weighted, high teaching drive |
+| Episodic store size / retrieval sharpness β | tiny (infantile amnesia: no consolidation before ~3) | growing / sharp | large / sharp | large / sharp | large / lower β → gist, false memories |
+| Decision interval | ×1.5 | ×1.0 | ×0.9 | ×1.0 | ×1.3 → ×1.8 |
+| Forgetting τ for new edges | short | long | long | long | shorter for new, old flashbulbs kept |
+
+**Critical periods** (windows where α for a specific learning channel is ×2–5 and afterwards ×0.2):
+- Attachment target: 6–24 months (MOTHER→COMFORT edge plasticity); for precocial animals, *imprinting* on
+  the first large moving thing in the first hours/days.
+- Native-lexicon phonology: 0–7 years (words learned later get lower α and an "accent" flag the LLM can render).
+- Species-specific (e.g. birdsong-like dialect learning for songbirds).
+- Closure can be partially reopened by extreme events (trauma, conversion), an interesting story lever.
+
+**Emergent developmental phenomena to verify** (these must *fall out*, not be scripted): A-not-B error
+(small K + strong just-formed habit), object permanence growing with τ_obj, false-belief passing (once
+social models track "has seen" tags), stage-like skill sequences from learning-progress curiosity,
+adolescent risk-taking, elder reliance on routine and crystallised knowledge.
+
+**Genetics hook:** each parameter above is the product of an age curve × an individual heritable factor
+(e.g. α_age × g_α, κ_− × g_anx, curiosity × g_openness), giving personality variance and evolvable minds.
+
+### 8.6 LOD tiers: how the brain degrades
+
+| Tier | Population (target) | Brain fidelity | Memory / creature | Notes |
+|---|---|---|---|---|
+| LOD0 focal | ≤ 100 | full AMG; depth 3–4; Hopfield/kNN episodic recall; ToM inverse planning; LLM narration/dialogue reads workspace, crystallised beliefs, top episodes | ~0.5–1 MB | LLM output maps back only to speech acts / concept tokens; never writes weights directly |
+| LOD1 near | ≤ 10k | full rules; depth 1–2; episodic 128; social 50 | ~30–60 KB | same learning, cheaper planning |
+| LOD2 far | ≤ 100k | Pavlovian + habits only (no lookahead); edges ≤ 256 deltas; 16 "scars" | ~3–5 KB | decisions every 5–10 s; learning only on salient outcomes |
+| LOD3 statistical | ≤ 1M | archetype (species + culture + age band) + 8–16 scar overrides + 2 × 128 B belief hypervectors | ~300–500 B | behaviour sampled from archetype policy biased by scars; no per-tick brain |
+| LOD4 aggregate | unlimited | population distributions only | — | cultural knowledge lives in the culture prior |
+
+- **Demotion:** rank edges by |w − prior| × (1 + 3·flashbulb) × recency; keep top-K for the new tier; fold the
+  rest into a hypervector summary; compress episodes into scars ("cue → outcome, valence, age at event").
+- **Promotion:** rehydrate = prior + kept deltas + scars re-expanded into edges; the LLM may write *narrative
+  colour* for the backstory but may not create sim facts that contradict scars.
+- **Consistency guard:** a creature's 20 most important beliefs are always preserved across tiers so the
+  player never sees a promoted villager "forget" their famous phobia.
+- **Rough totals:** 100 × 1 MB + 10k × 50 KB + 100k × 4 KB + 1M × 400 B ≈ 0.1 + 0.5 + 0.4 + 0.4 ≈ 1.4 GB.
+  Tighten via smaller caps for animals (most of the 1M will be animals with ≤ 64 edges, no lexicon/ToM).
+
+### 8.7 Determinism and engineering notes
+
+- Fixed-point int16 weights, integer ticks, table-based exp decay, sorted edge arrays, per-creature RNG
+  seeded from (world_seed, creature_id, tick) → bit-identical replays and lockstep multiplayer possible.
+- Batch updates by component (all creatures' perception, then all workspaces...) in SoA form; this is
+  GPU/SIMD-friendly in the GeNN spirit.
+- Stagger sleep consolidation across creatures to avoid nightly CPU spikes.
+- Build a **behavioural test suite from learning psychology** and run it in a headless grid (Minigrid-like):
+  acquisition curve, blocking, overshadowing, latent inhibition, second-order conditioning, extinction +
+  renewal + spontaneous recovery + reinstatement, partial-reinforcement extinction effect, avoidance
+  persistence, outcome devaluation (goal-directed early / habitual after overtraining), observational fear,
+  A-not-B, false belief, naming-game convergence. Each is a few dozen trials and becomes a regression test.
+
+## 9. Open questions / risks
+
+1. **The ontology is the hidden script.** If designers create concepts like DANGER or ENEMY, behaviour is
+   authored, not learned. Keep the vocabulary perceptual/physical; let value attach by learning. Open: how
+   much perceptual *feature* learning (concept formation from raw features) do we need beyond fixed categories?
+   Drescher-style synthetic items and signature clustering are candidate answers; both need prototyping.
+2. **Legibility vs. emergence.** Creatures showed dense brains are opaque. Our graph is inspectable, but with
+   10k+ edges designers still need tools: "why did she do that?" = show the top contributing edges, the
+   workspace and the arbitration weights for the last decision. Budget for this debug UI early.
+3. **Composite-cue explosion.** "ACTION|CUE|CONTEXT" nodes can multiply. Spin-off thresholds, ≤3 candidate
+   context features and pruning must be tuned; risk of either under-specific (superstitious) or memory-blowing
+   behaviour.
+4. **Superstition and runaway fear.** Prediction-error learning with one-trial aversive learning and
+   avoidance can create phobias that never extinguish and spread socially. That is realistic and a great god-game
+   lever — but needs population-level dampers (bounded taught-weight caps, counter-evidence from peers) to avoid
+   whole villages paralysed by fear.
+5. **Parameter tuning.** ~40 parameters × age curves × genetics. Need automated tuning against the
+   behavioural test suite plus "fun" metrics; risk of brittle balance.
+6. **LOD transitions.** Promotion/demotion may produce visible personality "pops". The preserved-top-beliefs
+   rule mitigates; still needs play-testing. Also save-file size with 1M minds.
+7. **LLM contamination.** If LLM dialogue can teach beliefs (via speech acts), hallucinations could inject
+   facts. All LLM outputs must pass through the same concept-token interface with trust caps, and the sim must
+   validate referents exist.
+8. **Causal vs. correlational learning.** RW/TD learn correlations; real children also learn causal structure
+   (interventions, "blicket detectors", Gopnik). Marginal attribution helps; full causal-Bayes-net learning is
+   probably too expensive except at LOD0. Open research question for us.
+9. **Language depth.** Naming games give words, not grammar. Fluent speech is LLM-only for focal agents; for
+   others, we only simulate lexicons and speech acts. Need a clear contract between the two layers.
+10. **Theory of mind cost.** Inverse planning per observed agent is cheap with few goals but grows with
+    crowd size; cap social attention (workspace-limited) and Dunbar-like social model counts.
+11. **Determinism across platforms** if any float math slips in (e.g. softmax). Use integer/LUT softmax or a
+    deterministic float library.
+12. **Ethical/design framing.** Creatures that genuinely learn pain and fear invite player cruelty; the god-game
+    framing makes this a feature, but consider how suffering is surfaced (and whether trauma should be
+    simulated at full intensity for children).
+13. **Licence hygiene.** Many of the best references are GPL/AGPL (Explauto, BindsNET, htm.core, NEST, Nengo,
+    iCub parts). Policy: algorithms re-implemented from papers in our own words/code only; no source copied;
+    keep a provenance log per algorithm.
+
+## 10. Key references (papers behind the mechanisms)
+
+- Rescorla & Wagner 1972; Pearce & Hall 1980; Mackintosh 1975 — Pavlovian learning and associability.
+- Sutton 1988; Schultz, Dayan & Montague 1997 (Science) — TD and dopamine RPE; Dabney et al. 2020 (Nature) —
+  distributional RPE.
+- Izhikevich 2007 (Cerebral Cortex) — distal reward via STDP eligibility + dopamine; Frémaux & Gerstner 2016
+  — three-factor rules review; Gerstner et al. 2018 — eligibility traces and neuromodulated plasticity.
+- Hebb 1949; Oja 1982 (normalised Hebbian); Bienenstock, Cooper & Munro 1982 (BCM sliding threshold) — useful
+  if we ever need unsupervised feature learning: BCM's sliding threshold is the classic stabiliser.
+- Bouton 2004 — context and extinction; Gershman, Blei & Niv 2010 — latent causes; Duggins & Eliasmith 2024 —
+  spiking amygdala.
+- Gurney, Prescott & Redgrave 2001 — basal-ganglia selection; Daw, Niv & Dayan 2005; Lee, Shimojo &
+  O'Doherty 2014; Keramati et al. 2011 — habit/goal arbitration; Dickinson 1985 — outcome devaluation.
+- Dayan 1993; Stachenfeld et al. 2017; Momennejad et al. 2017 — successor representation.
+- Mathys et al. 2011 — HGF; Rao & Ballard 1999; Friston 2010 — predictive coding / free energy.
+- Baars 1988; Dehaene & Changeux 2011; VanRullen & Kanai 2021 — global workspace.
+- Oudeyer, Kaplan & Hafner 2007 — IAC; Baranes & Oudeyer 2009/2013 — R-IAC/SAGG-RIAC; Portelas et al.
+  2019 — ALP-GMM; Pathak et al. 2017 — ICM; Burda et al. 2018 — RND; Klyubin et al. 2005 — empowerment.
+- Drescher 1991 — schema mechanism; Piaget 1952; Gopnik & Wellman — causal learning in children.
+- Rabinowitz et al. 2018 — ToMnet; Baker, Saxe & Tenenbaum 2009/2017 — Bayesian ToM; Zhi-Xuan et al. 2020 —
+  bounded inverse planning.
+- Steels 1995/2011 — naming game, language games; Chevalier-Boisvert et al. 2019 — BabyAI.
+- Olsson & Phelps 2007 — social fear learning; Öhman & Mineka 2001 — preparedness; Pattwell et al. 2012 —
+  adolescent fear-extinction deficit; Hensch 2005 — critical periods.
+- Grand, Cliff & Malhotra 1997; Grand 1997 — Creatures.
+- Blundell et al. 2016 — model-free episodic control; McClelland, McNaughton & O'Reilly 1995 — complementary
+  learning systems; Ramsauer et al. 2020 — modern Hopfield; Kanerva 1988 — SDM.

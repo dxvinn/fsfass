@@ -119,6 +119,21 @@ used to train ML models), and purchased/commissioned packs.
 - Integrate? yes for death/impact moments at LOD0; at all other tiers play a canned "fall" clip or sprite.
 - Risks: Must never feed back into sim truth (sim decides "X died, fell north"; the ragdoll just shows it).
 
+### Age / injury / body-type variation driven by sim state (research + patents)
+- URL: "Procedural Locomotion of Multi-Legged Characters in Dynamic Environments" (Abdul Karim et al., CAVW 2013) https://liris.cnrs.fr/Documents/Liris-5511.pdf ; elderly-gait forward-dynamics study (Gait & Posture 2021) https://www.sciencedirect.com/science/article/abs/pii/S096663622100014X ; **US patent 11129551 "Method for providing age-related gait motion transformation based on biomechanical observations"** (https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/11129551).
+- License: Papers are ideas; **the patent is a real IP risk** if we implement a near-identical "transform young gait to age-N gait from biomechanical tables" method — get a freedom-to-operate opinion or use a clearly different approach (e.g. procedural layers + physical parameters).
+- How it works (our version): Body descriptors from genetics/age/health modulate a procedural layer stack:
+  - **Proportions**: per-bone scale (head/limb/torso ratios by age curve; infants ~4 heads tall, adults ~7–7.5); stride length ∝ leg length; cadence from speed and leg length.
+  - **Elderly**: forward trunk flexion (+10–20°), reduced stride and arm swing, wider base of support, slower cadence, small vertical bob, occasional pause; cane/staff attachment shifts weight via additive lean.
+  - **Child/toddler**: higher cadence, wide stance, arms raised for balance (toddler), more bounce; run/skip cycles.
+  - **Limp (left/right leg, severity 0–1)**: shorten stance time on injured leg (asymmetric phase: injured leg stance ≈ 35–45% vs 60% normal), reduced knee flexion, pelvis drop and trunk lean over the good leg, head bob on good-leg contact; severe = hop/crutch.
+  - **Fatigue/hunger/sickness**: slower playback, slumped spine additive, heavier footfalls (sound only).
+  - **Build/mass**: wider stance, slower arm swing, larger vertical COM motion for heavy builds.
+  - **Pregnancy / carrying**: COM shift backwards with lumbar extension; carried items use hand IK + upper-body mask.
+- Runtime cost: Additive pose offsets + phase warping — cheap enough for LOD0–2; baked into variant clip bins for LOD3.
+- Integrate? yes — core of how variation is shown.
+- Risks: Overly mechanical look if all offsets are linear; patent above.
+
 ---
 
 ## Part B — Data-driven 3D character animation
@@ -456,4 +471,142 @@ used to train ML models), and purchased/commissioned packs.
 - How it works: The dialogue system emits syllable timing with the generated text; mouth opens per syllable, amplitude by emotion arousal.
 - Runtime cost: Negligible; works for hundreds of speaking agents.
 - Integrate? yes — the default for crowds of chatting villagers.
+
+---
+
+## Part F — Crowd & LOD animation
+
+### Skinned instancing / GPU skinning with animation textures (GPU Gems 3, ch. 2 "Animated Crowd Rendering")
+- URL: https://developer.nvidia.com/gpugems/gpugems3/part-i-geometry/chapter-2-animated-crowd-rendering
+- License: Free-to-read technique (NVIDIA, 2007).
+- How it works: All bone matrices of all clips are baked into a texture; each instance carries (clip id, time, LOD) in an instance buffer; the vertex shader fetches bone matrices from the texture and skins on the GPU; one draw call per mesh-LOD for thousands of characters.
+- Runtime cost: Near-zero CPU per character; GPU cost ∝ vertices. 10k–100k characters feasible with mesh LODs.
+- What it would do: Village- and map-scale 3D crowds of humans/animals; per-instance tint and bone-scale (height/build genes) still possible because skinning is per-instance.
+- Integrate? yes — the core 3D crowd technique.
+- Risks: No per-instance IK/blending beyond what the shader does (can add 2-clip crossfade and simple procedural bone offsets in shader).
+
+### Vertex Animation Textures (VAT) + OpenVAT
+- URL: https://github.com/sharpen3d/openvat ; https://openvat.org/ ; Bevy plugin https://github.com/HK416/bevy_open_vat
+- License: OpenVAT Blender add-on **GPL-3.0** (tool only — outputs are our data, not GPL); its engine decoder samples for Unity/Unreal/Godot are **MIT**; bevy_open_vat MIT/Apache-2.0 (~15 stars, Bevy 0.18–0.19). (verified)
+- How it works: Bake per-vertex positions (and normals) per frame into textures; vertex shader offsets vertices by (frame, vertex id). Works for any deformation — cloth, soft bodies, fluid-like meshes, even destruction.
+- Runtime cost: Cheapest possible per-instance animation; memory ∝ vertices × frames, so suited to low-poly far-LOD meshes, small animals, birds, fish, insects, plants.
+- What it would do: Far-LOD humans (200-vertex meshes), flocks of birds, fish schools, insect swarms, flags, tree sway variations.
+- Integrate? yes.
+- Risks: No variation of proportions except uniform/axis scale; memory blow-up on detailed meshes.
+
+### Babylon.js BakedVertexAnimationManager / VertexAnimationBaker
+- URL: https://doc.babylonjs.com/typedoc/classes/BABYLON.VertexAnimationBaker ; blog https://babylonjs.medium.com/creating-thousands-of-animated-entities-in-babylon-js-ce3c439bdacf
+- License: Babylon.js Apache-2.0.
+- How it works: Bake skeletal animation to a texture and play it per thin-instance (per-instance animation params buffer); demo: ~5,000 instances with different animations at ~50 fps (per Babylon docs/blog).
+- Integrate? yes if web 3D front-end.
+
+### Unity options: Animation-Instancing, Entities Graphics, Latios Kinemation
+- URL: https://github.com/Unity-Technologies/Animation-Instancing ; https://github.com/Dreaming381/Latios-Framework
+- License: Animation-Instancing: Unity Companion License (Unity-only), ~1.8k stars, 2018 vintage (stale). Latios Framework: Unity Companion License, ~1.4k stars, v0.16.1 targeting Entities 1.4 / Unity 6000.3. (verified)
+- How it works: Animation-Instancing bakes skinned meshes for GPU instancing with LOD/culling/attachments. Latios Kinemation: DOTS/ECS animation with ACL-compressed clips, GPU skinning, IK, inertial blending, root motion, advanced LOD.
+- Runtime cost: Kinemation targets thousands of animated entities in ECS.
+- Integrate? maybe — only if engine = Unity. Commercial alternative: Rukhanka (Asset Store, *unverified*).
+- Risks: Unity licensing/pricing history; DOTS churn.
+
+### Assassin's Creed Unity crowd ("Massive Crowd on Assassin's Creed Unity: AI Recycling", GDC 2015)
+- URL: https://gdcvault.com/play/1022411/Massive-Crowd-on-Assassin-s ; https://www.youtube.com/watch?v=Rz2cNWVLncI
+- License: Talk.
+- How it works: ~10,000 crowd NPCs on screen with only ~40 full AIs and ~120 high-res models; a pooling system swaps low-res "puppets" to high-res characters near the player without visible popping; low-res crowd runs a simplistic brain and cheap animation.
+- What we can learn: Exactly our problem — **promotion/demotion between animation LOD tiers keyed by camera distance, with state continuity** (same clip phase, same pose class) to hide swaps.
+- Integrate? yes (pattern).
+
+### Ultimate Epic Battle Simulator 2 (Brilliant Game Studios)
+- URL: https://steamcommunity.com/app/1468720 (dev statements in forums; no formal talk found)
+- License: Proprietary.
+- How it works (per developer statements): Everything — culling, LOD, transforms, AI and **full bone animation** — runs on the GPU; custom software rasteriser on GPU; millions of units; units even look at targets and blink.
+- What we can learn: For 100k–1M, animation state must live on the GPU (state buffers), with CPU only issuing high-level changes. Our "semantic animation tags" should be compact (a few bytes) so they can be streamed to a GPU state buffer each tick.
+- Integrate? pattern only.
+- Risks: Extreme engineering.
+
+### Total War (Creative Assembly) — reference only
+- URL: no authoritative public tech talk found in this session (*unverified*); community analyses note matched-combat animations are reserved for some unit pairs and unit-wide animation sync issues at scale.
+- What we can learn: Paired/matched animations (two people fighting, hugging, a mother lifting a child) are expensive; reserve them for LOD0–1 and use independent loops at distance.
+
+### Animation impostors / sprite billboards for far LOD
+- URL: technique; octahedral impostors (Ryan Brucks, Epic, 2018 blog — *not fetched*); classic "Polypostors"/animated impostors in crowd literature (Tecchia et al. 2002 — *unverified*).
+- How it works: Pre-render each archetype × few animation frames × N view angles to an atlas; draw a camera-facing quad picking the right angle/frame.
+- Runtime cost: One quad per agent → 1M agents feasible.
+- What it would do: Map-scale tier in 3D; in 2D this *is* the normal sprite path.
+- Integrate? yes (far tier).
+- Risks: Popping between angles; lighting mismatch.
+
+### Boids flocks/herds/schools + cheap animation
+- URL: Reynolds "Flocks, Herds, and Schools" (SIGGRAPH 1987) — https://www.red3d.com/cwr/boids/ (*not fetched*).
+- How it works: Separation/alignment/cohesion steering per agent (spatial hash), animation is a looping VAT/sprite cycle whose playback rate is proportional to speed (wingbeat/tailbeat/gait frequency) with per-agent phase offset; banking from turning rate.
+- Runtime cost: GPU compute boids reach 100k+.
+- What it would do: Birds, fish, insects, herds of deer at distance. When the god zooms in on one wolf, promote it to the procedural gait system.
+- Integrate? yes.
+
+---
+
+## Part G — Environment animation
+
+### L-systems and space colonization for plant growth
+- URL: "The Algorithmic Beauty of Plants" (Prusinkiewicz & Lindenmayer, free PDF at algorithmicbotany.org — *not fetched*); Runions et al. 2007 "Modeling Trees with a Space Colonization Algorithm"; https://github.com/jasonwebb/2d-space-colonization-experiments (JS, ~225 stars, LICENSE file present but type *unverified*).
+- How it works: L-systems rewrite symbol strings per growth step (parametric/stochastic L-systems encode genes: branching angle, internode length, phyllotaxis); space colonization grows branches toward attraction points (light/space), naturally competing with neighbours. Growth animation = interpolate between successive growth states (scale new internodes from 0, thicken older ones by pipe-model rule).
+- Runtime cost: Generation per plant is cheap on growth events (days, not frames); rendering of mature plants uses instancing.
+- What it would do: Plants visibly grow over sim days; plant genome → L-system parameters; drought → wilting angle offset; herbivory → removed branches.
+- Integrate? yes (own implementation; algorithms are free).
+- Risks: Mesh regeneration cost if many trees grow at once — batch growth updates across frames.
+
+### EZ-Tree (procedural trees for three.js)
+- URL: https://github.com/dgreenheck/ez-tree ; https://eztree.dev
+- License: MIT (verified), ~1.7k stars.
+- How it works: Parametric recursive branching (levels, angles, children, length, radius, taper, twist, gnarliness), leaves as cards, built-in wind animation via an update(time) call, LODs, GLB export.
+- What it would do: Web front-end trees or an offline generator of tree variants exported to any engine.
+- Integrate? yes (web) / maybe (as offline generator).
+
+### Wind sway shaders (vertex displacement) and GPU grass (Ghost of Tsushima)
+- URL: https://gdcvault.com/play/1027033/Advanced-Graphics-Summit-Procedural-Grass (Eric Wohllaib, GDC 2021); wind talk "Blowing from the West: Simulating Wind in Ghost of Tsushima" (Bill Rockenbeck, GDC 2021) https://www.youtube.com/watch?v=d61_o4CGQd8
+- License: Talks; open re-implementations exist (e.g. https://github.com/cainrademan/Unity-Grass — *licence unverified*).
+- How it works: Blades generated on GPU per tile with per-blade procedural shape; animation = bezier blade bent by a global scrolling wind noise field + per-blade phase; trees use hierarchical sway (trunk/branch/leaf frequencies) from vertex colour masks. Wind field is a low-res 2D/3D grid the sim can also own (storm direction).
+- Runtime cost: GPU only; millions of blades.
+- What it would do: Wind state from the weather sim drives every plant; trampled grass where herds walked (write to a "flattening" texture).
+- Integrate? yes.
+
+### Weather, fire and water VFX
+- URL: engine particle systems (Godot GPUParticles3D/2D; Unity VFX Graph; Bevy `bevy_hanabi` https://github.com/djeedai/bevy_hanabi — GPU particles, MIT/Apache-2.0, ~1.4k stars, tracks Bevy 0.19 (verified)); VAT/flipbook pipelines (EmberGen is commercial).
+- How it works: GPU particles for rain/snow/embers/smoke; flipbook textures for fire; water via scrolling normal maps + flowmaps, shoreline foam from depth; puddles via wetness mask; fire spread visualised by a per-cell "burning" texture the sim writes.
+- Integrate? yes — the sim owns fire/water cells; VFX just reads them.
+
+### Terrain change (erosion, floods, disasters)
+- URL: https://github.com/SebLague/Hydraulic-Erosion (Unity, MIT, ~1k stars, verified).
+- How it works: Droplet-based hydraulic erosion: many simulated raindrops pick up and deposit sediment based on speed/slope. For animation, the visual heightmap lerps toward the sim's new heightmap over seconds, with dust/water particles, so landslides/floods "play" rather than pop.
+- Integrate? yes (algorithm; sim-side ownership).
+
+### Building aging and damage
+- How it works: Per-building "age/wear/damage/soot/moss" scalars from the sim drive shader blends (dirt and moss masks via world-space noise + AO), decals for cracks, mesh swaps for structural stages (built → worn → damaged → ruin); construction animation = scaffold prop + progressive reveal (clip plane rising with build progress).
+- Runtime cost: Shader parameters only.
+- Integrate? yes.
+
+---
+
+## Part H — Engine fit and per-engine animation libraries
+
+| Engine / front-end | Built-in animation | Key OSS add-ons (licence) | Crowd path | Notes |
+|---|---|---|---|---|
+| **Godot 4.4–4.6** (MIT) | AnimationTree (blend spaces, state machines), Skeleton3D modifiers: LookAt/Retarget (4.4), SpringBoneSimulator3D (4.5), IKModifier3D family incl. TwoBone/FABRIK/CCD/Jacobian (4.6); Skeleton2D + 2D modifications | godot-motion-matching (MIT), Inochi2D GDExtension (BSD-2), spine-godot (Spine licence), OpenVAT decoder (MIT) | MultiMesh + VAT shader; custom GPU skinning | Best OSS fit for 2D and stylised 3D; C# or GDExtension (C++/Rust via godot-rust) for sim. |
+| **Bevy** (MIT/Apache) | AnimationGraph with masks + additive blending (0.15+), GPU-driven rendering incl. skinned meshes (0.16) | bevy_open_vat (MIT/Apache), bevy_animation_graph (community editor, *licence unverified*), bevy_hanabi | Automatic instancing + VAT; custom compute | Great for a Rust ECS sim; tooling (editor) immature; API churn per release. |
+| **Unity** (proprietary, runtime fee history) | Mecanim, Animation Rigging, 2D Animation (Sprite Library swapping) | JLPM22 MotionMatching (MIT), uLipSync (MIT), Latios Kinemation (UCL), Animation-Instancing (UCL) | DOTS/Entities Graphics; Latios | Most mature tooling; licence/business risk. |
+| **Unreal 5** (EULA, 5% royalty over threshold) | Motion Matching (Pose Search), Control Rig, IK Rig/Retargeter, Mass crowd, AnimToTexture plugin | Audio2Face UE5 plugin (MIT) | Mass + AnimToTexture VAT | Overkill/heavy for a stylised god-game; strong for realistic 3D. |
+| **Custom Rust/C++** | — | ozz-animation (C++, MIT, ~3k stars: SoA SIMD sampling/blending, glTF/FBX tooling, wasm), Holden Motion-Matching (MIT) | Own GPU skinning + VAT | Max control for 1M agents; must build tools. |
+| **Web: Three.js** (MIT) | AnimationMixer, SkinnedMesh, InstancedMesh | EZ-Tree (MIT), spine-threejs (Spine licence) | InstancedMesh + VAT/bone textures | Easy distribution; perf ceiling lower; WebGPU helps. |
+| **Web: Babylon.js** (Apache-2.0) | Animation groups, BakedVertexAnimationManager, thin instances | — | VAT on thin instances (~5k animated demo) | Strongest built-in crowd tooling on web. |
+| **Web: PixiJS** (MIT) | Sprites/AnimatedSprite, ParticleContainer | pixi-spine / spine-pixi (Spine licence), DragonBones runtime (MIT) | Sprite batching, 100k+ sprites | Natural fit for 2D top-down. |
+
+---
+
+## Part I — Linking animation to simulation
+
+Principle: **the simulation is the only source of truth; animation is a pure, lossy, deterministic-optional view.**
+- The sim emits, per agent per tick, a compact *Animation Intent Record* (AIR): action, locomotion, posture, modifiers, targets and body descriptors (schema below).
+- The animation layer, per LOD tier, resolves the AIR into whatever it can afford: a sprite row, a VAT clip id, a blended skeletal pose, a procedural IK pose, or an AI-generated clip.
+- Nothing flows back except *cosmetic* events (footstep sound triggers, "contact frame reached" for VFX timing). Gameplay outcomes (hit landed, child picked up, fell off cliff) are decided by the sim, and animation is time-warped to meet them (e.g. sim says "pickup completes at t+0.8 s": the animation scales its contact phase to 0.8 s).
+- Time-scaling: when the god runs the world at 10×–1000×, animation tiers drop automatically (at 100× nobody sees gait), and tags are interpolated or sampled.
+- Determinism: animation randomness (idle fidgets, phase offsets) is seeded from agent id so replays look the same but nobody depends on it.
 
