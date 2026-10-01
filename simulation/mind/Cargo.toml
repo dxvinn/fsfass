@@ -1,0 +1,11 @@
+[package]
+name = "alife-mind"
+description = "ArtificialMind v0. Depends ONLY on core + interface: it can never see world truth."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+alife-core = { path = "../core" }
+alife-interface = { path = "../interface" }

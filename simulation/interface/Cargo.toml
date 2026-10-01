@@ -1,0 +1,10 @@
+[package]
+name = "alife-interface"
+description = "The only channel between world truth and minds: sensory frames in, motor commands out."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+alife-core = { path = "../core" }

@@ -1,0 +1,12 @@
+[package]
+name = "alife-world"
+description = "World truth: objects with physical properties, physics, sensors and motor execution."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+alife-core = { path = "../core" }
+alife-interface = { path = "../interface" }
+alife-biology = { path = "../biology" }

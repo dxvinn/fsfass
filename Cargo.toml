@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "simulation/core",
+    "simulation/interface",
+    "simulation/biology",
+    "simulation/world",
+    "simulation/mind",
+    "experiments/p0_determinism",
+    "experiments/p1_fire_learning",
+    "tests",
+]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "UNLICENSED"
+publish = false
+
+[profile.release]
+debug = 1
+overflow-checks = false
+
+[profile.test]
+opt-level = 2

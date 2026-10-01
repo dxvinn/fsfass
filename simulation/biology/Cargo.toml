@@ -1,0 +1,10 @@
+[package]
+name = "alife-biology"
+description = "Body truth: energy, hydration, skin temperature, tissue damage, nociception, sleep pressure."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+alife-core = { path = "../core" }

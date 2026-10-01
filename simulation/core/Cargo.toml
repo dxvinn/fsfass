@@ -1,0 +1,9 @@
+[package]
+name = "alife-core"
+description = "Deterministic foundations: fixed-point maths, counter-based RNG, stable hashing, event queue."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
