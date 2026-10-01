@@ -319,7 +319,7 @@ func _rel_word(r: Dictionary) -> String:
 func _family() -> void:
 	var fam: Dictionary = data.get("family", {})
 	var tree := preload("res://scripts/ui/family_tree.gd").new()
-	tree.custom_minimum_size = Vector2(380, 300)
+	tree.custom_minimum_size = Vector2(380, 80)
 	tree.person_clicked.connect(func(id): select_requested.emit(id))
 	_add(tree)
 	tree.set_family(data, fam)

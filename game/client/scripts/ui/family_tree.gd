@@ -18,7 +18,6 @@ func set_family(me: Dictionary, fam: Dictionary) -> void:
 	boxes.clear()
 	links.clear()
 	var w := maxf(size.x, custom_minimum_size.x)
-	var rows := [70.0, 140.0, 220.0]
 	var self_p := {"id": me.get("id", -1), "name": me.get("name", "?"), "alive": me.get("alive", true), "age": me.get("age", 0), "me": true}
 	var grand: Array = fam.get("grandparents", [])
 	var parents := []
@@ -32,10 +31,20 @@ func set_family(me: Dictionary, fam: Dictionary) -> void:
 		if mid.size() < 5:
 			mid.append(s)
 	var kids: Array = fam.get("children", []).slice(0, 6)
-	var g_rects := _place(grand, 8.0, w)
-	var p_rects := _place(parents, rows[0], w)
-	var m_rects := _place(mid, rows[1], w)
-	var k_rects := _place(kids, rows[2], w)
+	# Only generations that exist get a row, so the tree stays compact.
+	var y := 8.0
+	var g_rects := _place(grand, y, w)
+	if g_rects.size() > 0:
+		y += 70.0
+	var p_rects := _place(parents, y, w)
+	if p_rects.size() > 0:
+		y += 70.0
+	var m_rects := _place(mid, y, w)
+	y += 70.0
+	var k_rects := _place(kids, y, w)
+	if k_rects.size() > 0:
+		y += 70.0
+	custom_minimum_size.y = y
 	for g in g_rects:
 		for p in p_rects:
 			links.append([g.get_center() + Vector2(0, 14), p.get_center() - Vector2(0, 14)])

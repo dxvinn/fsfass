@@ -387,6 +387,11 @@ impl Sim {
     }
 
     pub fn record(&mut self, kind: &str, text: String, x: i32, y: i32, important: bool) {
+        // The chronicle notes a repeated event once per game hour, not every second.
+        let recent = self.history.iter().rev().take_while(|e| self.tick.saturating_sub(e.tick) < 3600).any(|e| e.text == text);
+        if recent {
+            return;
+        }
         self.history.push(HistoryEvent { tick: self.tick, kind: kind.into(), text, x, y, important });
     }
 

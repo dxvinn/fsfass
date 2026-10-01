@@ -82,6 +82,17 @@ impl GenesisWorld {
         done
     }
 
+    /// Run `ticks` simulation seconds immediately at the cognition LOD of `speed`
+    /// (testing / "skip ahead"). Blocks until done.
+    #[func]
+    fn run_ticks(&mut self, ticks: i64, speed: i64) {
+        let Some(sim) = self.sim.as_mut() else { return };
+        sim.set_speed_lod(speed.max(1) as u32);
+        for _ in 0..ticks.max(0) {
+            sim.step();
+        }
+    }
+
     /// Stylised RGBA terrain texture, `scale` pixels per tile.
     #[func]
     fn terrain_image(&self, scale: i64) -> PackedByteArray {

@@ -59,6 +59,9 @@ var shot_path := ""
 var shot_frames := -1
 var auto_select := false
 var shot_tab := -1
+var warp_days := 0.0
+var shot_gods: PackedStringArray = []
+var shot_click := Vector2(-1, -1)
 var zoom_from_args := 1.4
 var speed_from_args := 1
 var status := {}
@@ -76,6 +79,11 @@ func _ready() -> void:
 		if a.begins_with("--seed="):
 			seed = int(a.substr(7))
 	world.new_world(seed, WORLD_W, WORLD_H)
+	if warp_days > 0.0:
+		# Testing aid: simulate ahead (at 1000x cognition LOD) before showing the world.
+		var t0 := Time.get_ticks_msec()
+		world.run_ticks(int(warp_days * 86400.0), 1000)
+		print("warped %.1f days in %d ms" % [warp_days, Time.get_ticks_msec() - t0])
 	night = CanvasModulate.new()
 	add_child(night)
 	view = preload("res://scripts/world_view.gd").new()
@@ -103,6 +111,13 @@ func _parse_args() -> void:
 			speed_from_args = int(a.substr(8))
 		elif a.begins_with("--zoom="):
 			zoom_from_args = float(a.substr(7))
+		elif a.begins_with("--god="):
+			shot_gods = a.substr(6).split(",")
+		elif a.begins_with("--click="):
+			var xy := a.substr(8).split(",")
+			shot_click = Vector2(float(xy[0]), float(xy[1]))
+		elif a.begins_with("--warp-days="):
+			warp_days = float(a.substr(12))
 		elif a == "--select":
 			auto_select = true
 
@@ -461,6 +476,7 @@ func _update_history() -> void:
 	var arr = JSON.parse_string(world.history(history_count))
 	if typeof(arr) != TYPE_ARRAY or arr.is_empty():
 		return
+	var initial: bool = history_count == 0 or arr.size() > 8
 	var at_bottom := history_scroll.scroll_vertical >= history_scroll.get_v_scroll_bar().max_value - history_scroll.size.y - 30
 	for e in arr:
 		history_count = int(e.i) + 1
@@ -487,7 +503,7 @@ func _update_history() -> void:
 		b.pressed.connect(func(): _set_follow(false); cam.position = target)
 		h.add_child(b)
 		history_box.add_child(h)
-		if e.important and e.kind in ["birth", "death", "first", "knowledge", "bond", "lightning"]:
+		if not initial and e.important and e.kind in ["birth", "death", "first", "knowledge", "bond", "lightning"]:
 			_toast(e.text, col)
 	while history_box.get_child_count() > 300:
 		var old := history_box.get_child(0)
@@ -518,12 +534,35 @@ func _screenshot_hook() -> void:
 		return
 	var f := Engine.get_process_frames()
 	if auto_select and f == 20:
+		# Prefer a human with a family (parent or children) for the screenshot.
 		var c: PackedFloat32Array = world.creatures()
+		var pick := -1
 		for i in c.size() / 16:
 			if int(c[i * 16 + 1]) == 0:
-				_select(int(c[i * 16]))
-				_set_follow(true)
-				break
+				var id := int(c[i * 16])
+				if pick < 0:
+					pick = id
+				var d = JSON.parse_string(world.inspect(id))
+				if d is Dictionary and (d.family.mother is Dictionary or d.family.children.size() > 0):
+					pick = id
+					break
+		if pick >= 0:
+			_select(pick)
+			_set_follow(true)
+	for k in shot_gods.size():
+		if f == 30 + k * 6:
+			var c := cam.get_screen_center_position()
+			var off := Vector2((k % 3 - 1) * 60, (k / 3 - 1) * 50)
+			_use_power(shot_gods[k], Vector2i(floori((c.x + off.x) / view.TILE), floori((c.y + off.y) / view.TILE)))
+	if shot_click.x >= 0 and f == 25:
+		# Drive the real input path: a left click at a screen position.
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = true
+		ev.position = shot_click
+		ev.global_position = shot_click
+		Input.warp_mouse(shot_click)
+		Input.parse_input_event(ev)
 	if shot_tab >= 0 and f == 22:
 		inspector.select_tab(shot_tab)
 	if f == shot_frames:
