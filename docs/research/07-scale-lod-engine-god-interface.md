@@ -717,3 +717,231 @@ Hot-path arithmetic: a 48-byte hot record × 1M agents = 48 MB. At a realistic ~
 **Candidates considered but excluded or unverified:** Gnomoria (closed), Ultima Ratio Regum (closed source), The Bibites (closed), Species: ALRE (closed), WorldBox (closed), RimWorld (closed, but decompiled-modding knowledge is widespread), Songs of Syx (closed). Small "Primordial" repos on GitHub (Primordial-sim/primordial, jkh2/Primordial-Sim, zainKhushall/primordial) exist but are tiny and unvetted, so they are not recommended as study material. Ken Stauffer's *Evolve* (rubberduck203/Evolve) exists; license not checked. DESMO-J and MASON are known Java DES/ABM libraries but were not verified this session.
 
 ---
+
+## Part E — Recommended architecture for our game
+
+### E0. Ground rules
+
+1. **One canonical world model, many resolutions.** Every person who exists has exactly one identity record (L1) for their whole life. Higher tiers *attach* extra state to that identity; they never replace it. Dwarf Fortress's "same data structures in all modes" and Veloren's "dual in rtsim" both point here.
+2. **Observed facts are canon.** Anything the god has seen (inspected, followed, read in a tooltip) is written to an *observed-facts store* and is never contradicted by later lazy generation (alibi generation).
+3. **Determinism.** The world is a pure function of (world seed, build version, generator versions, god-command log, external-input log). LLM outputs and any other non-deterministic inputs are external inputs and are logged.
+4. **LOD per subsystem, not only per agent.** An agent's locomotion, perception, deliberation, memory, social and physiology subsystems each have a tier. The "agent tier" is the default that sets them all.
+5. **Budget-driven, not distance-driven.** A per-frame governor (an LOD-Trader-style solver) assigns tiers by importance score under a CPU budget that depends on the current speed.
+
+### E1. Time base
+
+- Integer game time: `tick` = 1 game second (u64; enough for billions of years).
+- **1x = 1 game minute per real second** (a game day is 24 real minutes, a little faster than The Sims and slower than RimWorld). The speeds below are multiples of that.
+- Calendar: 1 day = 86,400 ticks. Pulses: hourly, daily, monthly (30 days) and yearly (360 days), so pulses divide evenly.
+
+### E2. The five tiers
+
+Importance score per agent (recomputed every ~real 250 ms for L2+ and on events):
+`I = w_obs·observed + w_cam·camera_proximity + w_rel·relation_to_observed + w_story·narrative_salience + w_god·recent_god_attention + w_role·social_rank − w_age·time_since_last_promoted`.
+Each tier has a hard cap and a soft budget; the governor fills tiers top-down by importance.
+
+#### L4 — Observed person (full cognition)
+- **Who:** followed, possessed or open-in-inspector agents, plus their immediate interaction partners while interacting. Cap: 8 at ≥25x, 32 at ≤5x.
+- **State kept (≈0.25–2 MB each):** full perception list (percepts with source, distance, salience); attention weights; working memory (7±2 typed slots); full episodic memory store (thousands of entries: 48–64 B each with embedding id, salience, emotion tag, participants, location, time, source/provenance); semantic beliefs with confidence and provenance chain; emotions (appraisal-based, e.g. OCC-like categories + PAD core affect); needs; goal stack with utility decomposition; hierarchical plan (HTN/GOAP) with current step; skills with XP; full relationship records; genetics (genotype + expressed phenotype); a **decision-trace ring buffer** (see E6); LLM context cache (dialogue summaries).
+- **Tick rates (game time):** locomotion/physics every tick (1 s); perception + attention every 5 s; deliberation (goal re-selection) every 30 s or on salient interrupt; plan repair on failure; memory encoding on event; consolidation and reflection during sleep; LLM calls (dialogue, reflection, inner monologue) asynchronous and budgeted, only at ≤5x (≤25x for the followed agent's dialogue).
+- **Promotion into L4:** the god selects, follows or possesses; or the agent becomes the counterpart of an L4 agent's interaction (temporarily). **Demotion:** 60 real seconds after deselection, or when the speed rises above the tier cap. Before leaving L4, run memory consolidation.
+
+#### L3 — Active individual (reduced cognition, on stage)
+- **Who:** agents visible on screen at "street" zoom, the household and close relations of L4 agents, agents in the settlement where the camera is, and participants in an ongoing important event (battle, trial, festival). Cap: ~5,000 at 1x, falling with speed (see E4).
+- **State kept (≈8–16 KB):** the same *kinds* of state as L4 with bounded sizes: ~128 episodic memories, ~64 relationships, ~64 beliefs, needs/emotions, a goal + plan of ≤8 steps, and a small decision ring (32 × 16 B). No LLM state.
+- **Tick rates:** locomotion every tick within the loaded zone (path following, local avoidance via the uniform grid); perception every 30 s; deliberation every 3 game-minutes or on interrupt; utility AI with ≤16 considerations, no deep planning (plans come from templates).
+- **Promotion:** entering camera frustum at street zoom (with prefetch as the camera zooms in), interaction with L4, or a god action targeting them or their location. **Demotion:** out of view for 2 game-hours and importance below threshold. Demotion summarises: keep the top-16 memories by salience, write notable memories to the chronicle, and keep the top-32 relationships.
+
+#### L2 — Background individual (schedule-level)
+- **Who:** all humans in the "loaded region" (the god's current region and neighbours), all named and important characters world-wide (rulers, heroes, anyone the god ever inspected, the families of L3/L4 agents). Cap: ~100k (memory-bound ~150 MB); at 1000x CPU-bound to ~100k.
+- **State kept (≈1–2 KB):** the L1 record plus a daily schedule (activity blocks), current activity + location (with movement as **linear path segments/curves**, so no per-tick movement), needs as last value + last update tick (analytic catch-up), a compact attitude vector toward ~8 categories (family, faith, ruler, strangers…), the top-16 memories (32 B each), the top-32 relationships (12 B each), inventory/wealth summary, and the last 8 decision records (16 B each).
+- **Tick rates:** **process-style / event-driven**: one daily plan at dawn (template choice by utility, ~10–20 µs), plus wake-ups from the timing wheel for activity changes, plus interrupts (events in the same building or settlement: fire, raid, death of a relative). Social encounters between L2 agents resolve as dice rolls on co-location (event templates), producing relationship deltas and chronicle entries.
+- **Promotion to L3:** camera/importance. **Demotion to L1:** leaving the loaded region and importance below threshold for ≥1 game-week. Agents the god has inspected never drop below L2 until they die. To avoid RimWorld-style bloat, cap the "protected" set and compact the oldest protected agents' memories into chronicle entries.
+
+#### L1 — Statistical individual (identity + vital statistics)
+- **Who:** every living human not in L2+ (and optionally named animals). This is what lets the world hold 1M people.
+- **State kept (96–128 B, SoA):** id (u32), birth tick (u32, stored in days), sex/flags (u8), settlement id (u32), household id (u32), mother/father ids (2×u32), spouse id (u32), profession (u8), health state (u8: healthy/sick-k/injured/pregnant…), Big-Five personality (5×u8), a compact genome (24–32 B: loci for heritable traits incl. fertility, intelligence, disease resistance, appearance seeds), skill summary (4×u8), wealth bucket (u8), faith/culture ids (2×u16), notable-event count + chronicle head index (u32), "materialisation generation" (u8), and a protected flag.
+- **Tick rates:** **pulses**, vectorised over SoA columns: monthly (pregnancy progress, illness transitions, migration decisions, employment changes), yearly (ageing, death hazard by age × health × settlement conditions, marriage matching within the settlement marriage market, fertility draw, skill progression by profession). Each draw uses counter-based RNG keyed by (seed, id, pulse index, stream), so it is order- and thread-independent.
+- **Outputs:** compact chronicle entries for vital events (birth/death/marriage/migration: 16 B each). At 1M people that is ≈75k events/year ≈ 1.2 MB/year raw, ≈240 MB per 200 years before compression and summarisation.
+- **Promotion to L2:** region load, kin of a promoted agent, or importance. **Demotion to L0** (rare): only for remote, never-observed settlements when the population cap is exceeded, or for pre-history/off-map peoples.
+
+#### L0 — Macro ecology and civilisation (aggregates and fields)
+- **What:** (a) settlements/peoples without individual records: cohort vectors (age band 5 y × sex × role ≈ 20×2×8 floats), household count, stocks (food, tools, wealth), culture/belief prevalence distributions, institutions, and a settlement-level chronicle; (b) animal and plant populations per region cell (logistic and Lotka–Volterra-style dynamics with migration); (c) environmental fields on grids (temperature, rainfall, soil fertility, vegetation biomass, water, disease pressure, "divine favour"), updated by GPU or SIMD stencil kernels (Lenia/Taichi-style); (d) civilisation-level actors: polities, trade networks, wars resolved as aggregate force ratios (Mount & Blade / Nemesis-style dice, recorded in the chronicle); (e) species-level evolution as Thrive-style batch "auto-evo" at epoch boundaries.
+- **Tick rates:** fields daily (or hourly for weather near the camera); populations monthly; polity politics monthly; species evolution per epoch (decade/century jumps).
+- **Hybrid switching:** disease and demography use hybrid ABM/EBM switching (Hunter et al. 2020). When an L1/L2 settlement's epidemic exceeds a threshold, the infection process for its L1 members switches to compartmental SIR/SEIR with the individual counts as initial conditions. When the epidemic falls back, or the settlement is promoted, individuals are re-sampled into states in proportion to the compartments, constrained by canon (observed sick people stay sick).
+
+### E3. Continuity: zooming into a village simulated statistically for 200 years
+
+Two cases.
+
+**Case A — the village was L1 for 200 years (the default for humans).** Individuals, genealogy and vital events already exist. Promotion L1→L2→L3 *materialises* the rest:
+1. **Prefetch.** When the camera starts zooming toward settlement V, enqueue promotion jobs for V's residents ordered by distance to the camera focus. Budget ~2–4 ms/frame. A typical village of 300 people at ~50 µs per materialisation costs ~15 ms, done across 4–8 frames during the zoom animation.
+2. **Deterministic fields** come from `H(seed, id, field, generator_version)`: detailed personality facets, appearance, voice, handwriting, quirks.
+3. **Derived fields** come from the L1 record plus the chronicle: skills = f(profession history, years, genome aptitude); body/health = f(age, health state, injuries in chronicle); wealth/inventory = sampled from settlement stock distribution × wealth bucket.
+4. **Relationships.** Kin come exactly from genealogy. Non-kin ties come from a seeded stochastic block model over the village (blocks = household, neighbourhood, profession, age cohort), with degree targets ~5 close / ~15 friends / ~150 acquaintances (Dunbar-like). They are then *conditioned on the chronicle* (marriages ⇒ prior courtship; recorded feuds ⇒ rivalry; co-survivors of a raid ⇒ bond).
+5. **Episodic memories.** Query the chronicle for events involving the person, their kin, household and settlement (famines, raids, plagues, festivals, births/deaths of kin, **god miracles and curses**). Instantiate memories with an appraisal computed from personality and relationship to the event, apply analytic salience decay from event time to now, and keep the top-K. Add a few *gist* semantic memories ("I've milled grain for 22 years"). Very old events persist as shared cultural memory (beliefs/stories), not personal episodes, unless very salient.
+6. **Beliefs.** Sample from the settlement's belief-prevalence distribution conditioned on parents' beliefs (if materialised) and on personal events (a cured child ⇒ stronger faith in the god).
+7. **Current state.** Sample needs and emotions from the steady-state distribution for the time of day, shifted by recent events (a death in the household last week ⇒ grief).
+8. **Canon pass.** Apply observed facts last, overriding any sampled value; if a sample is inconsistent (e.g. generated hatred toward someone the god saw them hug yesterday), reject and resample that field.
+9. **Persist.** Materialised values become canon. On later demotion they are summarised, but the chronicle and the observed-facts store guarantee the important parts regenerate the same way.
+
+**Case B — the village was L0 (aggregate only).** First run **L0→L1 individualisation**: build households from cohort counts with a seeded household-formation procedure (couples matched by age, children assigned to mothers by age gaps, widows/orphans placed by rates). Then synthesise a genealogy *backwards* for 2–3 generations, consistent with the settlement chronicle's vital totals (e.g. the famine of year 1203 must show a mortality spike among the synthetic grandparents). Then proceed as in Case A. Alibi rule: individuals that the L0 chronicle names (the chieftain killed in the raid of 1150) are constrained to exist with those facts.
+
+**Demotion invariants (tested in CI):** population count, food stock, wealth and genome allele frequencies are conserved through L3→L2→L1→L0→L1 round trips within tolerance; observed facts are never lost; no dangling relationship ids (Veloren's "unhappy path matters").
+
+### E4. Scheduler design (multi-rate + event queue + budgets)
+
+Components:
+1. **Fixed micro-step** (1 tick = 1 game second) only for L3/L4 locomotion and physical interactions inside the loaded zone. At high speeds the micro-step is sub-sampled: agents switch to path-segment movement (curves) and contact/collision are only evaluated at segment boundaries.
+2. **Multi-rate system table.** Each system declares (tier mask, period in ticks, phase policy, read set, write set). Entities are hashed into `period` buckets, and each tick processes one bucket. Load is flat and each entity is touched exactly once per period. Examples: L4 perception P=5; L3 perception P=30; L3 deliberation P=180; L2 daily plan at a per-agent dawn offset.
+3. **Event queue.** A hierarchical timing wheel (second / minute / hour / day / year wheels) holds agent wake-ups and scheduled world events (activity end, travel arrival, pregnancy due, harvest, festival, decay of a god blessing). The ordering key is (tick, priority class, entity id, sequence). It is deterministic, cheap (O(1) insert), and supports cancellation via generation counters.
+4. **Pulses** (hourly/daily/monthly/yearly) run L1/L0 vectorised jobs. They are scheduled as ordinary events, so pulses and agent events interleave deterministically.
+5. **Budgeted async queues** for expensive cognition (deep planning, memory retrieval with embeddings, LLM calls) use anytime algorithms with per-frame µs budgets (the OpenTTD opcode-budget idea). A result is applied at a **deterministic apply tick** (request tick + fixed latency L). If it hasn't arrived by then: at ≤5x the sim briefly waits; above 5x a deterministic fallback is used. Either way the outcome (LLM text or "fallback used") goes into the external-input log.
+6. **Region parallelism.** The world is partitioned into regions. Within a tick, systems run data-parallel over entities (rayon) with double-buffered writes. Cross-entity effects are emitted as messages (FLAME GPU / Biosim4 pattern) and applied after a deterministic sort by (target id, source id, seq).
+7. **Speed governor.** Every real frame: `target_ticks = real_dt × speed × 60`. Run ticks until the sim budget is spent. If behind, first **demote** (raise tier thresholds) rather than drop speed; at 1x keep detail and show a "sim lagging" indicator instead. Tier caps per speed are below.
+
+| Speed | Game time per real second | L4 cap | L3 cap (10k world / 100k / 1M) | L2 policy | LLM | Notes |
+|---|---|---|---|---|---|---|
+| Pause | 0 | any | unchanged | unchanged | allowed (inspection Q&A) | inspect, edit, god powers queue |
+| 1x | 1 min | 32 | 10k / 5k / 5k | all loaded-region humans | on (async) | full animation |
+| 5x | 5 min | 16 | 5k / 3k / 3k | loaded region | followed agent + its dialogue partner | |
+| 25x | 25 min (1 day ≈ 58 s) | 8 | 1.5k / 1k / 1k | loaded region | off; end-of-day summaries only | animations time-compressed |
+| 100x | 1.7 h (1 day ≈ 14 s) | 1–4 | 400 (followed household + settlement leaders) | loaded region (up to 100k) | off | activities resolved at block level; walking drawn as interpolated segments |
+| 1000x | 16.7 h (1 year ≈ 8.6 min) | 1 (summary mode) | ~50 (followed household) | ≤100k nearest by importance | off | map heat-overlays; L4 only records activity-level decisions |
+| Epoch (beyond 1000x: "skip 10/100 years") | ~1 year per 1–5 s | 0 (followed agent protected at L2) | 0 | named characters only | off | L1 pulses + L0; on return, generate a "while you were away" chronicle digest |
+
+### E5. Per-agent memory and CPU budgets
+
+Assumed target machine: an 8-core desktop with 6 worker threads available to the sim at ~85% ≈ **5×10⁶ µs of sim CPU per real second**, and ~1–1.5 GB of sim RAM at 1M (~4 GB available).
+
+**Per-tier unit costs (design targets, to be validated by prototypes):**
+
+| Tier | Bytes/agent | Cost per update | Updates per game day | µs per agent per game day |
+|---|---|---|---|---|
+| L4 | 0.25–2 MB | perception 30 µs; deliberation 300–2000 µs; plan 1–5 ms on goal change | perception 17,280; deliberation 2,880 | ~1.5–6 s (≈0.5–4 ms per real s at 1x) |
+| L3 | 8–16 KB | perception 8 µs; deliberation 60–120 µs; locomotion 0.2 µs/tick | perception 2,880; deliberation 480; locomotion ≤86,400 when moving | ~60–100 ms |
+| L2 | 1–2 KB | daily plan 15 µs; wake-ups ~6 × 2 µs; encounters ~3 × 3 µs | ~10 | ~35 µs |
+| L1 | 96–128 B | monthly pulse 0.2 µs; yearly pulse 1–2 µs | 1/30 + 1/360 | ~0.01 µs |
+| L0 | per settlement 2–8 KB; per field cell 16–64 B | stencils/ODEs | daily/monthly | negligible per person |
+
+At speed *s*, game days per real second = s / 1440. Sim CPU per real second ≈ Σ_tiers N_tier × (µs per game day) × s / 1440.
+
+**Worked budgets:**
+
+| World | Speed | Tier mix | Sim CPU per real s | % of 5 s budget | RAM (agents) |
+|---|---|---|---|---|---|
+| 10k | 1x | 32 L4 / 10k L3 (all) | 32×4 ms + 10k×(100 ms/1440) ≈ 0.13 + 0.69 = 0.82 s | 16% | 32 MB + 160 MB ≈ 0.2 GB |
+| 10k | 25x | 8 L4 / 1.5k L3 / 8.5k L2 | 8 × ~4 ms × 25 (LLM off) + 1.5k×100 ms×25/1440 + 8.5k×35 µs×25/1440 ≈ 0.8 + 2.6 + 0.005 = 3.4 s | 68% | ~0.05 GB |
+| 10k | 1000x | 1 L4 / 50 L3 / 10k L2 | 50×100 ms×0.694 + 10k×35 µs×0.694 ≈ 3.5 + 0.24 = 3.7 s | 75% (lower L3 to 25 for headroom) | ~0.02 GB |
+| 100k | 1x | 32 L4 / 5k L3 / 95k L2 | 0.13 + 5k×0.069 ms + 95k×35 µs/1440 ≈ 0.13 + 0.35 + 0.002 = 0.48 s | 10% | 32 MB + 80 MB + 150 MB ≈ 0.26 GB |
+| 100k | 100x | 4 L4 / 400 L3 / 99.6k L2 | 400×100 ms×0.069 + 99.6k×35 µs×0.069 ≈ 2.8 + 0.24 = 3.0 s | 60% | ~0.2 GB |
+| 100k | 1000x | 1 L4 / 50 L3 / 100k L2 | 3.5 + 100k×35 µs×0.694 ≈ 3.5 + 2.4 = 5.9 s | **118% ⇒ governor drops L3 to ~15 and L2 to ~60k** | ~0.15 GB |
+| 1M | 1x | 32 L4 / 5k L3 / 200k L2 / 795k L1 | 0.13 + 0.35 + 0.005 + ~0 = 0.49 s (+ spatial/path costs) | 10–20% | 32 + 80 + 300 + 100 MB ≈ 0.5 GB (+ grids, paths, chronicle ≈ 0.3–0.5 GB) |
+| 1M | 1000x | 1 L4 / 25 L3 / 60k L2 / 940k L1 | 1.7 + 60k×35 µs×0.694 + 940k×0.01 µs×0.694 ≈ 1.7 + 1.5 + 0.007 = 3.2 s | 64% | ~0.5 GB |
+| 1M | Epoch (1 yr/s) | 0 L3 / ~5k named L2 / rest L1 + L0 | L1: 1M×(12×0.2 + 1.5) µs ≈ 3.9 s; L2 named: 5k×35 µs×360 ≈ 63 ms | ~80% ⇒ **epoch speed ≈ 1 year/real second at 1M** | ~0.4 GB |
+
+Takeaways:
+- **Per-agent µs per real second available:** 10k ⇒ 500 µs; 100k ⇒ 50 µs; 1M ⇒ 5 µs. At 1000x, per agent per *game minute*: 10k ⇒ 0.5 µs; 100k ⇒ 0.05 µs; 1M ⇒ 5 ns. Individual minute-level cognition at 1000x is impossible above ~10k, which proves the need for schedule-level L2 and pulse-level L1.
+- **Per-agent byte budget:** 1M agents in 1 GB ⇒ ~1 KB average, so the median person must be L1 (~128 B).
+- **Hot record ≤ 64 B** for anything iterated every tick (position i32×2, velocity i16×2, tier u8, activity u8, target u32, path segment u32, region u16, flags u16…). One streaming pass over 1M hot records costs ~3 ms.
+- Spatial grid rebuild (counting sort) for ~200k moving agents: ~1–2 ms per rebuild on CPU. At 1x, rebuild every tick only for L3/L4 (≤5k: <0.1 ms).
+- Pathfinding is budgeted separately (e.g. 1 ms/frame) with hierarchical paths and cache sharing. L2 travel uses precomputed region-graph routes.
+- Browser (wasm, 4–8 threads, ~1–2 GB): divide by ~2–3 for CPU and keep 1M only with L1 at ≤128 B. A realistic web target is 100k individuals.
+
+### E6. The god inspector
+
+**Principles:** never pay for recording what nobody looks at; make everything reconstructible; be honest about resolution.
+
+**Always recorded (all tiers, cheap):**
+- **World chronicle**: typed, append-only events (16–32 B): vital events, migrations, crimes, battles, disasters, god actions, institution changes. Indexed by entity, settlement and time; stored in yearly segment files; old segments summarised ("decade digests"), preserving anything referenced by observed facts.
+- **Per-agent decision stub (L2+):** a ring of the last 8 decisions × 16 B: tick, chosen action id, goal id, dominant consideration code (hunger/safety/love/duty/faith/greed/fear/curiosity/obedience-to-god…), top-3 alternative scores (u8). This is enough for a one-line "why": "Went to the temple (faith 0.82 > hunger 0.40) after the drought."
+- **Per-agent decision ring at L3:** 32 entries with percept-summary hash and emotion snapshot.
+- **Replay substrate:** periodic snapshots (full yearly + delta daily, plus hourly deltas for the loaded region), the god-command log and the external-input log (LLM outputs).
+- **Cheap metrics** for overlays: per-settlement aggregates (needs satisfaction, belief prevalence, disease, LOD tier counts), sampled every game hour into ring buffers for charts.
+
+**Recorded only when observed (L4, record-on-observe):**
+- A full **decision-trace ring buffer** per observed agent: ~4,096 entries × 128–512 B in a dedicated arena (0.5–2 MB/agent). Each deliberation record holds: percept list (top-N with attention weights and why attended), working-memory contents, retrieved memories (query, hits, scores), candidate goals with per-consideration utility terms (input value, response curve, output), chosen goal, plan/HTN decomposition, rejected alternatives with reasons, emotion appraisal deltas, belief updates, LLM prompt/response references, and timing (µs spent).
+- **Pin/bookmark** flushes the ring to disk so long stories survive. Developers can mirror the same stream to Rerun with a "sim_time" timeline.
+
+**Retroactive explanation ("why did she do that 3 days ago?"):**
+1. If the agent was L4 at that time, read the trace.
+2. Otherwise, find the nearest snapshot before T and **re-simulate the region in a background worker** with tracing enabled for the target. Determinism guarantees the same outcome, and the trace shows the reasoning *at the tier the agent was actually simulated at*.
+3. The UI labels the resolution: "Reconstructed from schedule-level simulation (L2): daily plan chosen at dawn because…". The UI must never present an L4-style inner monologue for a decision made at L2. An optional "counterfactual: what would she think at full detail?" mode runs L4 cognition in a sandbox fork and is clearly labelled hypothetical.
+
+**Panels:**
+- *Brain*: perception cone overlay on the map, attention heat, WM slots, needs bars, emotion (core affect + discrete), goal stack with stacked utility bars, plan tree with current step, memory list (salience, source, emotional tag, "materialised/reconstructed" badge), beliefs with confidence and provenance chain (Talk-of-the-Town style "heard from X on day Y"), skills, genetics (genotype ↔ phenotype with inheritance arrows), family tree (genealogy browser over L1 records).
+- *Why?*: a causal chain from decision → dominant consideration → contributing percept/memory/belief → originating chronicle event (possibly a god action), all clickable.
+- *Population grid*: a Dwarf-Therapist-style virtualised table over any filtered set (100k rows with clipping), custom formula columns and heatmap colours.
+- *Timeline*: a scrubbable chronicle timeline (openage-style curves for aggregates); jump-to-snapshot; "rewind and fork" for experiments (sandbox branch; the main timeline is untouched unless the god commits).
+- *Map overlays*: needs, beliefs, disease, fertility, divine favour, **LOD tier map** (developer and "lab mode" toggle).
+- *Developer tools*: egui/ImGui panels, a reflection-generated component inspector (bevy-inspector-egui / RobustToolbox ViewVariables style), Tracy zones per system and per tier, determinism self-check (periodic state hash à la 0 A.D.; a GGRS SyncTest-style rerun-and-compare in CI).
+- *Remote inspector API*: the sim exposes a query/introspection API over a local socket (like Flecs Explorer's REST). The game UI, a browser dashboard and test scripts all use it.
+
+**Possession:** the possessed agent is L4; the player's inputs are god commands in the command log (so replays work). Its perception is shown "through their eyes" (only perceived entities visible, beliefs annotate the world).
+
+**God powers and LOD:** any targeted god action promotes the target area to ≥L2 for its duration (so effects are individually felt and remembered) and writes a chronicle event that L1/L0 belief models consume ("the drought ended after the offering"). Area effects on L0 (plague, fertility change) modify rate parameters directly.
+
+### E7. Engine, language, determinism and saves
+
+**Recommendation: a headless Rust simulation core plus a separate presentation layer.**
+
+- **`sim-core` (Rust, no engine dependency):**
+  - Storage: dense SoA tables for hot per-individual state; slotmap tables for sparse cognitive state (allocated only at L3/L4); cohort tables for L0. `bevy_ecs` used standalone is acceptable if its scheduler is driven by our own deterministic stepper. The relational abstract tier follows Veloren rtsim's lesson: not everything belongs in an ECS.
+  - Parallelism: rayon; message-passing for cross-entity effects; deterministic merges.
+  - Numbers: fixed-point (Q16.16 / i32) for positions, needs and stocks; f32 allowed only in presentation and in non-canonical analytics. Counter-based RNG keyed by hashes. No iteration over randomly seeded hash maps; use index maps or sorted vectors.
+  - Content: data-driven (RON/JSON/TOML) professions, needs, actions and event templates, à la CDDA JSON and nyan.
+  - Scripting (modding): only at event level with a budgeted VM (Lua/Rhai/WASM modules with fuel limits, OpenTTD-style), never in per-agent hot loops.
+- **Presentation (pick one):**
+  - **Godot 4 + GDExtension (godot-rust/gdext)**. *Preferred for the shipped game*: mature 2D/2.5D rendering, the best UI toolkit of the options for a dense inspector, editor and tooling, MIT license, web/mobile export. Render agents with MultiMesh/RenderingServer, never one Node per agent. Thrive shows Godot + C# + ECS works for a sim game.
+  - **Bevy**: one language end-to-end and wgpu compute for fields; the UI story is weaker and the API churns every ~3 months. A good choice for the **developer harness/lab build** with bevy-inspector-egui.
+  - **Web UI** (TypeScript + WebGPU, sim compiled to wasm in a worker): choose this if a browser release is a goal. Expect ~100k individuals, not 1M.
+  - **Unity DOTS**: technically strong, but closed and license-risky, and it couples the sim to the engine. Not recommended.
+  - **C++ (flecs/EnTT + ImGui + SDL/bgfx)**: viable alternative core if the team is C++-native; flecs relationships and Explorer are excellent. Rust is preferred for safety in a heavily parallel, long-lived codebase.
+- **Process model:** the sim runs on its own threads at its own cadence. Each frame the UI receives a **render extract** (double-buffered view state for the visible area) and issues **commands** (god actions, inspector queries) through a channel. The UI never mutates sim state directly. This enables headless servers, automated testing, fast-forward without rendering, and future co-op.
+- **Saves:** a container file with a header (build/schema/generator versions, seed), per-table columnar chunks (postcard/bincode or FlatBuffers) compressed with zstd, chronicle segment files, an observed-facts store, snapshot deltas, and the command and external-input logs. Autosave from a copy-on-write snapshot at a tick boundary (dirty-chunk tracking) to avoid hitches. Each table has a version and migration functions; generator versions are pinned per world, so lazy generation stays stable across game updates.
+- **Determinism tests:** golden-seed runs in CI comparing state hashes every N ticks; a SyncTest (run, roll back to snapshot, re-run, compare); a cross-thread-count test (1 vs 8 threads must give identical hashes); and round-trip promotion/demotion invariant tests.
+
+### E8. Implementation order (de-risking)
+
+1. L1 + L0 world (1M people, pulses, chronicle, fields): proves the 1M memory budget and epoch speed.
+2. L2 schedule agents + timing wheel + path segments: proves 100k at 1000x.
+3. L3 utility agents + uniform grid + locomotion: proves 5k at 1x.
+4. Promotion/demotion with materialisation + observed-facts store + invariant tests.
+5. L4 cognition + decision-trace ring + inspector UI + retroactive replay.
+6. LLM integration (async, logged), last, behind feature flags.
+
+---
+
+## Part F — Open questions and risks
+
+1. **Perceived inconsistency on re-promotion.** A re-materialised villager may differ from the player's memory of them in unrecorded details. Mitigations: the observed-facts store (record what the UI *displayed*, not just what was clicked), a generous protected set, and stable seeded generation. Open question: how much UI exposure counts as "observed" (hover tooltips? background crowds?).
+2. **Calibration between tiers.** L1 hazard rates and L2 schedules must statistically match what L3/L4 agents would do, or the world changes character when you look at it. Plan: offline calibration, where we run L3-detailed simulations of sample villages and fit L2/L1 parameters (surrogate modelling), repeated whenever L3 behaviour changes. Mesa/krABMaga-style parameter sweeps help.
+3. **LLM determinism, latency and cost.** Treat LLM output as logged external input; cap calls by speed; provide deterministic fallbacks. Open: local vs cloud model, privacy, offline play, and whether LLM-written memories become canon.
+4. **History bloat over centuries** (the RimWorld world-pawn lesson). We need compaction policies for chronicles, protected characters and relationships to the dead. Without them, save sizes and load times grow without bound.
+5. **Retroactive replay cost.** Re-simulating a region from a snapshot is cheap for hours and expensive for months. Snapshot cadence trades disk against explanation latency. Open: retention window for "why?" queries (e.g. full detail for the last 30 game days, summary beyond).
+6. **Cross-platform determinism.** Fixed-point avoids most float issues, but SIMD and GPU field kernels can diverge across vendors. Decision needed: are GPU fields canonical (then they need a deterministic CPU fallback) or purely presentational?
+7. **Camera teleport thrash.** Fast travel across the world may outrun materialisation prefetch. Options: a short "focusing" transition, progressive refinement (show L2 crowds first), and a promotion budget that grows when paused.
+8. **God actions that cut across tiers** (cursing one person in an L0 village) force immediate L0→L1→L2 individualisation in a single frame. Budget spikes need a pause-and-materialise UX.
+9. **1M at 1000x is a soft target.** It works only because most people are L1. If design later demands daily individual behaviour for everyone (e.g. a detailed economy), 1M becomes infeasible on CPU. A GPU L2 is possible for movement but not for branching decisions.
+10. **Browser constraints:** wasm threads need COOP/COEP, memory limits apply, and Safari WebGPU/Memory64 parity is uncertain. Decide early whether the web is a first-class target.
+11. **Engine risk:** Bevy API churn and gdext binding maturity. Mitigated by keeping `sim-core` engine-agnostic with a thin adapter.
+12. **Honesty of explanations.** Reconstructed L2 rationales are coarse, and the inspector must not imply richer minds than were simulated. This is a design and trust issue for a "science lab" god game.
+13. **Licence hygiene.** Most deep references (Veloren, openage, CDDA, Thrive, OpenTTD, FLAME GPU 2) are GPL/AGPL/CC BY-SA, so take ideas only, no code. Reusable permissive pieces: flecs, EnTT, Bevy, bevy-inspector-egui, egui/ImGui, Tracy, Rerun, GGRS, krABMaga, Biosim4, Lenia, ALIEN (BSD), Taichi, Mesa (offline), Talk of the Town.
+14. **Unverified items to follow up:** Brockington 2002 full text; Osborne & Dickinson citation; Hitman: Absolution crowd talk title; Mesa DEVS module names; KeeperRL and Unknown Horizons scheduler internals; Polyworld/Repast HPC exact licenses; Tracy exact BSD variant; RobustToolbox licence split; Memory64 support in Safari.
+
+### Sources (primary pages fetched or found this session)
+- Veloren: https://github.com/veloren/veloren ; https://gitlab.com/veloren/veloren/-/raw/master/rtsim/src/lib.rs ; https://gitlab.com/veloren/veloren/-/raw/master/rtsim/src/data/mod.rs ; https://gitlab.com/veloren/veloren/-/raw/master/rtsim/src/rule/simulate_npcs.rs ; https://gitlab.com/veloren/veloren/-/raw/master/common/src/rtsim.rs
+- openage docs: https://raw.githubusercontent.com/SFTtech/openage/master/doc/code/curves.md ; https://raw.githubusercontent.com/SFTtech/openage/master/doc/code/event_system.md
+- Chenney GDC 2001: https://pages.cs.wisc.edu/~schenney/research/culling/chenney-gdc2001.pdf
+- Brom et al. 2007: https://link.springer.com/chapter/10.1007/978-3-540-74997-4_1
+- Wißner et al. 2010: https://link.springer.com/chapter/10.1007/978-3-642-16958-8_20
+- Sunshine-Hill & Badler: https://repository.upenn.edu/hms/114/ ; thesis https://repository.upenn.edu/edissertations/435/ ; LOD Trader https://dl.acm.org/doi/10.1145/2522628.2541250
+- AC Unity crowds: https://gdcvault.com/play/1022411/Massive-Crowd-on-Assassin-s
+- Morvan survey: https://arxiv.org/abs/1205.0561 ; multi-level time/consistency: https://arxiv.org/abs/1703.02399 ; Multi-Level Mesa: https://arxiv.org/pdf/1904.08315
+- Hybrid ABM/EBM: https://www.jasss.org/23/4/14.html
+- FLAME GPU 2 paper: https://onlinelibrary.wiley.com/doi/10.1002/spe.3207
+- CDDA dynamic NPCs: https://github.com/CleverRaven/Cataclysm-DDA/pull/35124
+- CK3 event scripting dev diary #30: https://forum.paradoxplaza.com/forum/developer-diary/crusader-kings-3-dev-diary-30-event-scripting.1397140/
+- Widelands implementation notes: https://www.widelands.org/documentation/implementation/
+- Thrive auto-evo: https://thrive.fandom.com/wiki/Automatic_evolution ; https://github.com/Revolutionary-Games/Thrive/pull/7267
+- Repository URLs are listed in each Part D entry.
