@@ -318,3 +318,255 @@ blocking, extinction and renewal like a spiking amygdala does?"), not for runnin
 - What we should NOT integrate: Atari/VAE specifics.
 - Scalability: 1k agents × 256 entries fine; 100k only with ~16 entries each.
 
+### Spiking amygdala model of fear conditioning, extinction, renewal (psipeter/amygdala)
+- URL: https://github.com/psipeter/amygdala (paper: Duggins & Eliasmith, "A scalable spiking amygdala model
+  that explains fear conditioning, extinction, renewal and generalization", Eur. J. Neurosci. 2024,
+  https://onlinelibrary.wiley.com/doi/full/10.1111/ejn.16338)
+- License: unverified for the repo; it depends on Nengo, whose current main-branch LICENSE reads GPL-2.0
+  (older Nengo releases used a separate restrictive "Nengo licence"; check before any reuse).
+- Language: Python (Nengo)
+- Activity/maintenance: paper code; latest commit 2024-01-24; ~1 star
+- Architecture: nuclei as populations representing vectors: lateral amygdala (LA) learns CS->US association
+  by error-driven learning (PES rule: Δw ∝ −error × presynaptic activity); basolateral amygdala (BA) holds
+  separate "fear" and "extinction" neurons; extinction neurons are *context-gated* (hippocampal context
+  input), and drive intercalated cells (ITC) which inhibit central amygdala (CeA) output; CeA output = fear
+  response (freezing). Hence fear returns in a new context (renewal) because the extinction memory is
+  context-bound while the fear memory is not.
+- Scientific concept modeled: amygdala circuit; acquisition, extinction, renewal, generalisation.
+- Computational cost: thousands of spiking neurons — offline only.
+- What we can learn: the *circuit logic* is cheap to mimic with 3 numbers per cue: w_fear(cue),
+  w_ext(cue, context), and output = max(0, w_fear − Σ_ctx w_ext). That reproduces renewal and spontaneous
+  recovery (decay w_ext faster than w_fear) — a big believability win ("she was fine with campfires for
+  years, but the forest fire brought it all back").
+- What we could integrate: the 3-variable abstraction; nothing from the code.
+- What we should NOT integrate: Nengo runtime (GPL, cost).
+- Scalability: abstraction: all tiers.
+
+### Successor Representation (awjuliani/successor_examples) and RatInABox
+- URL: https://github.com/awjuliani/successor_examples ; https://github.com/RatInABox-Lab/RatInABox
+- License: MIT (both)
+- Language: Python (notebooks / package)
+- Activity/maintenance: successor_examples is a tutorial (~55 stars, date unverified); RatInABox active
+  (latest commit 2026-07-09, ~270 stars).
+- Architecture: Dayan 1993 SR: M(s, s') = expected discounted future occupancy of s' starting from s, learned by
+  TD: M(s,·) += α·(1_s + γ·M(s_next,·) − M(s,·)). Value = M · R, so when reward changes (water hole dried up)
+  values update instantly without relearning the map — "latent learning". RatInABox simulates place/grid/head
+  direction/boundary/object-vector cells for an agent moving in continuous space and includes successor
+  feature and value-neuron learners.
+- Scientific concept modeled: hippocampal predictive map (Stachenfeld, Botvinick & Gershman 2017);
+  a middle ground between habits and planning (Momennejad et al. 2017).
+- Computational cost: tabular SR is |S|² — too big; a *sparse* SR over ~50 landmark places is cheap.
+- What we can learn: creatures that wander as children build a map for free and later exploit it when a
+  need arises (Tolman's rats). Reward revaluation ("the berries at the river are poisonous now") propagates
+  through the map immediately.
+- What we could integrate: sparse SR over landmark places for LOD0/LOD1 creatures; MIT code safe.
+- What we should NOT integrate: dense SR; per-tick place-cell simulation.
+- Scalability: 1k agents × 50 landmarks² = fine; 100k with per-culture shared maps + personal overrides.
+
+### Tolman–Eichenbaum Machine (torch_tem)
+- URL: https://github.com/jbakermans/torch_tem
+- License: unverified (not shown)
+- Language: Python (PyTorch)
+- Activity/maintenance: research code; ~180 stars; date unverified
+- Architecture: Whittington et al. 2020 Cell. Separates *structure* (grid-cell-like abstract location code
+  that path-integrates actions) from *content* (sensory code); hippocampal cells bind the two with fast
+  Hebbian memory; generalises map structure across environments.
+- Scientific concept modeled: cognitive maps, structural generalisation, place/grid cells.
+- Computational cost: deep recurrent model — offline only.
+- What we can learn: the conceptual split "where/how things relate" vs "what is here" maps to our design:
+  a culture-shared spatial/relational schema + personal content bindings.
+- What we could integrate: concept only.
+- What we should NOT integrate: the network.
+- Scalability: N/A at runtime.
+
+## 3. Candidate systems — C. Action selection, habits vs goals, belief updating, workspaces
+
+### Basal-ganglia action selection: GPR model (ABRG-Models/GPR-BasalGanglia, benoit-girard/CBG)
+- URL: https://github.com/ABRG-Models/GPR-BasalGanglia ; https://github.com/benoit-girard/CBG
+- License: unverified for both (no licence shown on the repo pages)
+- Language: SpineML model files (GPR repo); Python (CBG)
+- Activity/maintenance: archival research code; 1–2 stars; dates unverified
+- Architecture: Gurney, Prescott & Redgrave 2001 (Biol. Cybern.): each candidate action is a *channel* with a
+  "salience" input. Striatal D1 ("selection") units inhibit GPi/SNr for their channel; D2 ("control") units
+  act via GPe; the STN sends diffuse excitation to all channels. Net effect: GPi output for the winning
+  channel drops below threshold (disinhibiting thalamus = action released) while others stay inhibited.
+  Dopamine raises D1 gain and lowers D2 gain → high dopamine = more vigorous/impulsive switching; low dopamine
+  = difficulty initiating (parkinsonian). Girard's CBG ("contracting" BG) is a variant with provable
+  convergence. Prescott et al. 2006 embedded it in a foraging robot (EASA), see also https://github.com/ferdiex/easa.
+- Scientific concept modeled: action selection as disinhibition; persistence; dopamine gain.
+- Computational cost: 5 nuclei × n_channels rate units, a few iterations: ~100 flops for 10 actions.
+- What we can learn: two things missing from plain softmax: (1) **hysteresis / persistence** — the incumbent
+  action gets a bonus so creatures don't dither between eating and drinking every tick ("lock-in" via the
+  thalamic loop); (2) a single **dopamine-like tonic level** that scales vigor and switching readily
+  (exhausted/depressed creatures barely act; manic ones flit).
+- What we could integrate: a 10-line "salience → disinhibition with incumbent bonus and global gain" selector.
+- What we should NOT integrate: full nucleus dynamics.
+- Scalability: all tiers.
+
+### Model-based / model-free arbitration (Daw, Niv & Dayan 2005; Lee, Shimojo & O'Doherty 2014)
+- URL: https://pure.kaist.ac.kr/en/publications/neural-computations-underlying-arbitration-between-model-based-an/
+  (Lee et al. 2014, Neuron). No official code located; two-step task implementations exist, e.g.
+  https://github.com/mtrazzi/two-step-task (not verified in detail).
+- License: n/a (paper)
+- Language: n/a
+- Activity/maintenance: theory is mature; widely replicated with the two-step task (Daw et al. 2011).
+- Architecture: two controllers run in parallel. Model-free (habit) caches Q(s,a) via TD from reward
+  prediction errors (RPE). Model-based (goal-directed) learns a transition model and plans; its learning
+  signal is a *state* prediction error (SPE). Each controller's **reliability** = 1 − running mean of |its
+  prediction error|. The probability of handing control to the model-based system is a sigmoid of the
+  reliability difference, biased by cost (planning is effortful). Daw 2005 used Bayesian uncertainty instead:
+  pick whichever controller is more certain. Keramati et al. 2011: plan only when the value of information
+  beats the time cost. Habits form because, with overtraining, the cached system becomes reliable and cheap.
+- Scientific concept modeled: habit vs goal-directed behaviour (dorsolateral vs dorsomedial striatum),
+  outcome devaluation insensitivity of habits.
+- Computational cost: arbitration itself is ~10 flops; the cost is the model-based lookahead.
+- What we can learn: this is the principled answer to "when does a creature think vs. act on autopilot":
+  in familiar stable routines → habit (cheap, and also *wrong* when the world changes — a farmer walks to the
+  dry well out of habit, which looks alive); in novel/high-stakes/changed situations → deliberate.
+- What we could integrate: reliability-weighted arbitration as the central switch of our decision loop,
+  and also as an LOD knob (low LOD = forced habit mode).
+- What we should NOT integrate: full Bayesian arbitration.
+- Scalability: arbitration all tiers; planning only LOD0/LOD1.
+
+### pyhgf — Hierarchical Gaussian Filter
+- URL: https://github.com/ComputationalPsychiatry/pyhgf
+- License: MIT
+- Language: Python (JAX) with a Rust backend
+- Activity/maintenance: very active; latest commit 2026-09-30; ~165 stars
+- Architecture: Mathys et al. 2011/2014 HGF: a hierarchy of Gaussian beliefs; level 1 tracks the quantity
+  (e.g. "is this path safe"), level 2 tracks how fast it changes (volatility), level 3 how fast *that*
+  changes. Each update is a closed-form precision-weighted prediction error: μ_new = μ + (π_input/π_new)·δ.
+  The effective learning rate rises automatically when the world is volatile and falls when stable.
+- Scientific concept modeled: Bayesian belief updating under volatility; computational psychiatry (anxiety =
+  overestimated volatility; autism/psychosis hypotheses about precision).
+- Computational cost: ~20–50 flops per node update; a 2-level HGF per tracked variable is trivial.
+- What we can learn: an extremely cheap principled *adaptive learning rate*. Applying a 2-level HGF to a few
+  key beliefs per creature (food reliability of a place, trustworthiness of a neighbour, danger of a region)
+  gives belief revision that reacts sensibly to regime change (famine, war) — and personality via priors on
+  volatility.
+- What we could integrate: the update equations (simple; re-implement); MIT code safe.
+- What we should NOT integrate: JAX runtime.
+- Scalability: all tiers for a handful of variables per creature.
+
+### Predictive coding networks (Bogacz-Group/PredictiveCoding; also infer-actively/pypc)
+- URL: https://github.com/Bogacz-Group/PredictiveCoding ; https://github.com/infer-actively/pypc
+- License: unverified for Bogacz-Group repo (not shown); pypc unverified
+- Language: Python (PyTorch)
+- Activity/maintenance: Bogacz-Group repo ~76 stars, date unverified
+- Architecture: Rao & Ballard 1999; Whittington & Bogacz 2017. Each layer holds value nodes x_l and error
+  nodes ε_l = x_l − f(W_l x_{l+1}); inference relaxes x to minimise Σ‖ε‖² (iterative, local), then weights
+  update with a local Hebbian-like rule ΔW ∝ ε_l · f(x_{l+1})ᵀ. Temporal predictive coding predicts the next
+  input from the previous state.
+- Scientific concept modeled: perception as prediction-error minimisation; local learning approximating backprop.
+- Computational cost: tens of inference iterations × layer size² — too heavy per creature at scale.
+- What we can learn: the general principle we actually need is "*learn only from what you failed to
+  predict*" — prediction error gates both learning and attention. We implement this symbolically (expected
+  vs. observed outcome per active edge), not with relaxation dynamics.
+- What we could integrate: principle only.
+- What we should NOT integrate: iterative inference per tick.
+- Scalability: ≤10 agents if ever.
+
+### RxInfer.jl and ActiveInference.jl (active inference beyond pymdp)
+- URL: https://github.com/ReactiveBayes/RxInfer.jl ; https://github.com/ComputationalPsychiatry/ActiveInference.jl
+- License: MIT (both)
+- Language: Julia
+- Activity/maintenance: RxInfer very active (latest commit 2026-09-28, ~420 stars); ActiveInference.jl ~42
+  stars, date unverified.
+- Architecture: RxInfer does reactive message passing on factor graphs (Forney-style), closed-form for
+  conjugate pairs, so inference is a set of local message updates that can be triggered incrementally as
+  observations stream in. ActiveInference.jl provides POMDP-style active inference agents (A, B, C, D
+  matrices; expected free energy = risk + ambiguity) similar to pymdp.
+- Scientific concept modeled: free-energy principle / active inference; perception & action as inference.
+- Computational cost: POMDP active inference scales with |states|×|policies|; policy enumeration explodes
+  beyond a few steps.
+- What we can learn: the **expected free energy decomposition** is a useful design lens: action value =
+  pragmatic value (expected preference satisfaction) + epistemic value (expected information gain). That is
+  exactly "goal-seeking + curiosity" in one currency — we can approximate epistemic value with a novelty /
+  uncertainty bonus on edges with low evidence count.
+- What we could integrate: the scoring decomposition; reactive "update only on new evidence" scheduling.
+- What we should NOT integrate: full EFE policy search per creature.
+- Scalability: full AIF: ≤100 agents with tiny state spaces; heuristic decomposition: all tiers.
+
+### Shimmer (Global Latent Workspace)
+- URL: https://github.com/ruflab/shimmer
+- License: MIT
+- Language: Python (PyTorch)
+- Activity/maintenance: small (~7 stars); date unverified; from VanRullen's lab (VanRullen & Kanai 2021,
+  "Deep learning and the Global Workspace Theory").
+- Architecture: several pretrained domain modules (vision, language...) each with encoder/decoder to a shared
+  latent workspace; training with translation, cycle-consistency and contrastive losses so content in one
+  modality can be broadcast and decoded into others; attention selects which module "writes" the workspace.
+- Scientific concept modeled: global workspace theory (Baars; Dehaene's neuronal workspace): many specialist
+  processes, one limited-capacity broadcast stage.
+- Computational cost: deep nets — offline only.
+- What we can learn: GWT reduces to a **cheap, very useful game mechanic**: a K-slot buffer where candidate
+  items (percepts, drives, memories, plans) compete by salience; only winners are (a) eligible for learning,
+  (b) used in planning, (c) reportable to the LLM narrator ("what is she thinking about?"). This also gives
+  attentional blindness and distraction for free.
+- What we could integrate: the competition-for-broadcast idea; nothing from code.
+- What we should NOT integrate: multimodal deep workspace.
+- Scalability: K-slot workspace: all tiers (K drops at low LOD).
+
+### PsyNeuLink
+- URL: https://github.com/PrincetonUniversity/PsyNeuLink
+- License: Apache-2.0
+- Language: Python
+- Activity/maintenance: active; latest commit 2026-09-15; ~120 stars
+- Architecture: block-modelling environment for cognitive neuroscience: Mechanisms (e.g. DDM, LCA,
+  TransferMechanisms, recurrent/Hebbian/Kohonen mechanisms), Projections and a Composition scheduler;
+  ControlMechanisms implement Expected Value of Control (Shenhav, Botvinick & Cohen 2013) — allocating
+  costly cognitive control where expected payoff exceeds effort cost. (Mechanism list from documentation
+  knowledge; the repo page itself highlights DDM, Stroop and backprop examples.)
+- Scientific concept modeled: cognitive control, decision diffusion, conflict monitoring.
+- Computational cost: Python modelling tool; not runtime-suitable.
+- What we can learn: (1) **drift-diffusion / leaky competing accumulators** as decision mechanisms give
+  realistic *reaction-time and hesitation* behaviour (close calls take longer, more errors under pressure);
+  (2) **Expected Value of Control** is a principled "effort budget" for deliberation — tired or stressed
+  creatures plan less.
+- What we could integrate: Apache-2.0 is commercial-friendly, but we would re-implement the 2–3 equations.
+- What we should NOT integrate: the framework itself.
+- Scalability: equations: all tiers.
+
+### pyClarion (CLARION cognitive architecture)
+- URL: https://github.com/cmekik/pyClarion
+- License: MIT
+- Language: Python
+- Activity/maintenance: active but "highly experimental"; latest commit 2026-08-06; ~68 stars
+- Architecture: Ron Sun's CLARION: every subsystem has an *implicit* bottom level (distributed, learned by
+  RL/backprop) and an *explicit* top level (symbolic rules). Bottom-up learning (Rule-Extraction-Refinement):
+  when an implicit action succeeds, extract a rule; generalise or specialise it based on an information-gain
+  measure of its success rate. Motivational subsystem: drives (food, water, sleep, avoid danger, affiliation,
+  dominance, autonomy, curiosity...) with strengths set by deficit × weight; meta-cognitive subsystem sets goals
+  and learning parameters from drive state.
+- Scientific concept modeled: implicit vs explicit learning; drive-based motivation; skill → rule extraction.
+- Computational cost: per-decision small; Python implementation not runtime-grade.
+- What we can learn: **rule extraction from successful implicit behaviour** is how we make creatures'
+  learned knowledge *legible and transmissible*: once an edge pattern is strong and reliable, crystallise it into
+  an explicit "belief" ("fire burns") that can be spoken, taught and narrated by an LLM. CLARION's drive list is
+  also a well-motivated starting set for human needs.
+- What we could integrate: RER idea + drive taxonomy; MIT code safe as reference.
+- What we should NOT integrate: the generic chunk/feature machinery at scale.
+- Scalability: abstracted: all tiers; full: ≤1k.
+
+### MicroPsi2 (Psi theory)
+- URL: https://github.com/joschabach/micropsi2
+- License: MIT (license.txt: "All parts of MicroPsi2 are under MIT license, unless marked otherwise")
+- Language: Python
+- Activity/maintenance: dormant; latest commit 2016-04-22; ~190 stars
+- Architecture: Dörner's Psi theory as implemented by Joscha Bach: node nets with typed links; *urges*
+  (physiological: food, water, integrity; cognitive: competence, certainty; social: affiliation) whose
+  deviation produces urge signals; *modulators* computed from urges — arousal (activation), resolution level
+  (how carefully to perceive/plan), selection threshold (how sticky the current goal is) — emotions are not
+  separate modules but *configurations of modulators* (anger = high arousal, low resolution, high selection
+  threshold, high competence urge frustrated). Reinforcement = change of urge level ("pleasure" when an urge
+  is reduced, "displeasure" when it rises).
+- Scientific concept modeled: motivation, emotion as cognitive modulation, need-driven goal formation.
+- Computational cost: modulators are a handful of scalars per creature.
+- What we can learn: the **modulator layer** is a cheap, elegant bridge between drives and cognition:
+  arousal ↑ → planning depth ↓, softmax temperature ↓ (impulsive), working-memory slots ↓, persistence ↑.
+  It turns emotion into parameter changes of the very same brain rather than scripted states. Certainty and
+  competence urges = intrinsic motivation.
+- What we could integrate: modulator equations as design; MIT code reusable but stale.
+- What we should NOT integrate: the node-net runtime / web UI.
+- Scalability: all tiers.
+
