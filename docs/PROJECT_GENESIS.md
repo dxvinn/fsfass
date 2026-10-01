@@ -163,7 +163,7 @@ These changes were made, all in the world, none in the mind:
 - **Navigation:** humans walk around lakes and ridges.
 - **Learning by watching:** children learn to eat and drink by watching adults.
 - **Nursing:** toddlers are carried until 3 and nursed until 5.
-- **Population:** 30 game days at 1000×, 7 seeds starting from 10 people: 16, 15, 4, 11, 10, 17 and 19 alive. Seed 42 did not finish. Most deaths were from old age.
+- **Population:** 30 game days at 1000×, 8 seeds starting from 10 people: 16, 15, 4, 11, 10, 17, 19 and 23 alive. Most deaths were from old age.
 - **Visuals:** painted terrain at 16 px per tile, water shimmer, new sprites.
 - **Save/load:** Save and Load buttons (F5 / F9). A save is the world's seed plus a journal of outside actions. Loading replays it and is verified exactly.
 
@@ -171,7 +171,7 @@ These changes were made, all in the world, none in the mind:
 
 1. **P1 criterion C5** (experienced children faster than naive ones to first swallow) is still FAIL: 6 s vs 6 s. The P1 report predates the last round of mind changes.
 2. **Overgeneralised beliefs:** people sometimes tell each other vague beliefs ("visible things mean drink").
-3. **Tasting other people** happens about 1–3% of the time in adults (down from 1.5–2.9%).
+3. **Tasting other people** happens 0.2–1.0% of the time (down from 1.5–2.9%); wolf bites 8–13 per 48 h (down from 12–21).
 4. **Tracing affects behaviour:** turning on decision traces (selecting a human) changes that human's think rate. A watched run therefore diverges from an unwatched one, although each is deterministic and save/load records the selection.
 5. **Loading time:** loading replays the whole history, so it takes longer the older the world is.
 6. Wolves and grazers use simple innate rules, not minds.
