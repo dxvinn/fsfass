@@ -1,4 +1,6 @@
-//! Deterministic fixed-point number: 64-bit signed integer with 16 fractional bits.
+//! Deterministic fixed-point number: 64-bit signed integer with 32 fractional bits
+//! (range about +/-5e8, resolution 2.3e-10; 16 bits proved too coarse for slow
+//! per-second processes such as healing and sleep pressure).
 //!
 //! Every quantity that is part of simulation state uses `Fx`, so results are
 //! bit-identical on every platform, thread count and compiler that implements
@@ -14,10 +16,10 @@ use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub struct Fx(pub i64);
 
-const FRAC: u32 = 16;
-/// Internal precision for transcendental helpers (Q2.30 inside an i64/i128).
-const P: u32 = 30;
-const P_ONE: i64 = 1 << P;
+const FRAC: u32 = 32;
+/// Internal precision for transcendental helpers (Q40 inside i128).
+const P: u32 = 40;
+const P_ONE: i128 = 1 << P;
 
 impl Fx {
     pub const ZERO: Fx = Fx(0);
@@ -36,7 +38,7 @@ impl Fx {
     /// Converts a ratio num/den exactly (rounded toward zero).
     #[inline]
     pub const fn ratio(num: i64, den: i64) -> Fx {
-        Fx(((num as i128) << FRAC) as i64 / den)
+        Fx((((num as i128) << FRAC) / den as i128) as i64)
     }
 
     /// For configuration constants and test fixtures only.
@@ -135,25 +137,21 @@ impl Fx {
 
     /// e^x. Saturates for large x; returns 0 for very negative x.
     pub fn exp(self) -> Fx {
-        if self.0 <= -(40 << FRAC) {
+        if self.0 <= -(40i64 << FRAC) {
             return Fx::ZERO;
         }
-        if self.0 >= (20 << FRAC) {
+        if self.0 >= (20i64 << FRAC) {
             return Fx::MAX;
         }
-        // y = x * log2(e) in Q30
-        const LOG2E_Q30: i128 = 1_549_082_005; // 1.4426950408889634 * 2^30
-        let y: i128 = ((self.0 as i128) << (P - FRAC)) * LOG2E_Q30 >> P;
-        let k = (y >> P) as i64; // floor
-        let f = (y - ((k as i128) << P)) as i64; // in [0, 2^30)
-        let p = exp2_frac_q30(f); // 2^f in Q30, [1,2)
-        // result = p * 2^k in Q16
-        let shift = k + FRAC as i64 - P as i64;
-        let v = if shift >= 0 {
-            (p as i128) << shift
-        } else {
-            (p as i128) >> (-shift)
-        };
+        // y = x * log2(e) in Q40
+        const LOG2E_Q40: i128 = 1_586_259_972_792; // 1.4426950408889634 * 2^40
+        let y: i128 = (((self.0 as i128) << (P - FRAC)) * LOG2E_Q40) >> P;
+        let k = y >> P; // floor
+        let f = y - (k << P); // in [0, 2^40)
+        let p = exp2_frac(f); // 2^f in Q40, [1,2)
+        // result = p * 2^k, converted from Q40 to Q32
+        let shift = k as i64 + FRAC as i64 - P as i64;
+        let v = if shift >= 0 { p << shift } else { p >> (-shift) };
         Fx(v.min(Fx::MAX.0 as i128) as i64)
     }
 
@@ -163,30 +161,23 @@ impl Fx {
             return Fx::from_int(-40);
         }
         // x = m * 2^e with m in [1,2)
-        let msb = 63 - self.0.leading_zeros() as i64; // position of highest set bit
+        let msb = 63 - self.0.leading_zeros() as i64;
         let e = msb - FRAC as i64;
-        // m in Q30
-        let m: i64 = if msb >= P as i64 {
-            self.0 >> (msb - P as i64)
-        } else {
-            self.0 << (P as i64 - msb)
-        };
+        let raw = self.0 as i128;
+        let m: i128 = if msb >= P as i64 { raw >> (msb - P as i64) } else { raw << (P as i64 - msb) };
         // ln(m) = 2 * atanh(z), z = (m-1)/(m+1) in [0, 1/3]
-        let num = (m - P_ONE) as i128;
-        let den = (m + P_ONE) as i128;
-        let z = ((num << P) / den) as i128; // Q30
+        let z = ((m - P_ONE) << P) / (m + P_ONE);
         let z2 = (z * z) >> P;
         let mut term = z;
         let mut sum: i128 = 0;
         let mut k: i128 = 1;
-        for _ in 0..9 {
+        for _ in 0..12 {
             sum += term / k;
             term = (term * z2) >> P;
             k += 2;
         }
-        let ln_m = 2 * sum; // Q30
-        const LN2_Q30: i128 = 744_261_118; // 0.6931471805599453 * 2^30
-        let total = ln_m + (e as i128) * LN2_Q30; // Q30
+        const LN2_Q40: i128 = 762_123_384_786; // 0.6931471805599453 * 2^40
+        let total = 2 * sum + (e as i128) * LN2_Q40; // Q40
         Fx((total >> (P - FRAC)) as i64)
     }
 
@@ -228,21 +219,20 @@ impl Fx {
     }
 }
 
-/// 2^f for f in [0,1) given in Q30; result in Q30 within [1, 2).
-fn exp2_frac_q30(f: i64) -> i64 {
-    // e^(f ln2) via Taylor series with enough terms for ~1e-9 accuracy.
-    const LN2_Q30: i128 = 744_261_118;
-    let x: i128 = ((f as i128) * LN2_Q30) >> P; // in [0, ln2)
-    let mut term: i128 = P_ONE as i128;
-    let mut sum: i128 = P_ONE as i128;
-    for n in 1..=12i128 {
-        term = (term * x >> P) / n;
+/// 2^f for f in [0,1) given in Q40; result in Q40 within [1, 2).
+fn exp2_frac(f: i128) -> i128 {
+    const LN2_Q40: i128 = 762_123_384_786;
+    let x: i128 = (f * LN2_Q40) >> P; // in [0, ln2)
+    let mut term: i128 = P_ONE;
+    let mut sum: i128 = P_ONE;
+    for n in 1..=16i128 {
+        term = ((term * x) >> P) / n;
         sum += term;
         if term == 0 {
             break;
         }
     }
-    sum as i64
+    sum
 }
 
 fn isqrt_u128(n: u128) -> u128 {
@@ -365,12 +355,19 @@ mod tests {
     }
 
     #[test]
+    fn slow_decay_is_representable() {
+        // One second of a 2.5-day time constant must not round to exactly 1.
+        assert!(Fx::decay(Fx::ONE, fx(216_000.0)) < Fx::ONE);
+    }
+
+    #[test]
     fn golden_bits_are_stable() {
         // Bit-exact golden values: if these change, saved worlds and replays break.
-        assert_eq!(fx(1.5).exp().raw(), 293_711);
-        assert_eq!(fx(3.0).ln().raw(), 71_998);
-        assert_eq!(fx(0.7).sigmoid().raw(), 43_790);
-        assert_eq!(fx(7.0).sqrt().raw(), 173_391);
+        assert_eq!(fx(1.5).exp().raw(), 19_248_707_987);
+        assert_eq!(fx(3.0).ln().raw(), 4_718_503_850);
+        assert_eq!(fx(0.7).sigmoid().raw(), 2_869_844_629);
+        assert_eq!(fx(7.0).sqrt().raw(), 11_363_415_354);
     }
 }
+
 

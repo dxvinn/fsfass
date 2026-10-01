@@ -54,6 +54,9 @@ pub struct Body {
     pub damage_mouth: Fx,
     /// Radiant heat accumulated during the current tick (0..1 scale).
     pub radiant: Fx,
+    /// Extra radiant heat on the hand / face when it is held close to a surface.
+    pub radiant_hand: Fx,
+    pub radiant_mouth: Fx,
     pub sleep_pressure: Fx,
     pub asleep: bool,
     /// Contact sites touched this tick (reset each step).
@@ -71,8 +74,13 @@ pub struct BodySignals {
     pub pain_hand: Fx,
     pub pain_mouth: Fx,
     pub fullness: Fx,
+    /// Nutrient and water sensed in the gut (stomach contents), 0..1.
+    pub gut_nutrient: Fx,
+    pub gut_fluid: Fx,
     pub fatigue: Fx,
     pub body_heat: Fx,
+    /// Acute nociceptor firing (thermal), separate from tonic inflammatory pain.
+    pub acute_pain: Fx,
     pub reflex_hand: bool,
     pub reflex_mouth: bool,
 }
@@ -91,6 +99,8 @@ impl Body {
             damage_hand: Fx::ZERO,
             damage_mouth: Fx::ZERO,
             radiant: Fx::ZERO,
+            radiant_hand: Fx::ZERO,
+            radiant_mouth: Fx::ZERO,
             sleep_pressure: fx(0.25),
             asleep: false,
             contact_hand: false,
@@ -128,6 +138,14 @@ impl Body {
         self.radiant += flux;
     }
 
+    /// Radiant heat on one site only (hand or face held close to a surface).
+    pub fn add_radiant_site(&mut self, site: Site, flux: Fx) {
+        match site {
+            Site::Hand => self.radiant_hand += flux,
+            Site::Mouth => self.radiant_mouth += flux,
+        }
+    }
+
     /// Advance physiology by one second.
     pub fn step(&mut self) {
         self.age_s += 1;
@@ -151,11 +169,13 @@ impl Body {
 
         // Skin relaxes toward rest (plus a little radiant warming) where there is no contact.
         let rest = k::skin_rest_c() + self.radiant.clamp01() * fx(12.0);
+        let rest_hand = rest + self.radiant_hand.clamp01() * fx(14.0);
+        let rest_mouth = rest + self.radiant_mouth.clamp01() * fx(14.0);
         if !self.contact_hand {
-            self.skin_hand += (rest - self.skin_hand) * k::skin_relax();
+            self.skin_hand += (rest_hand - self.skin_hand) * k::skin_relax();
         }
         if !self.contact_mouth {
-            self.skin_mouth += (rest - self.skin_mouth) * k::skin_relax();
+            self.skin_mouth += (rest_mouth - self.skin_mouth) * k::skin_relax();
         }
 
         // Thermal damage and healing.
@@ -179,6 +199,8 @@ impl Body {
 
         self.signals = self.compute_signals();
         self.radiant = Fx::ZERO;
+        self.radiant_hand = Fx::ZERO;
+        self.radiant_mouth = Fx::ZERO;
         self.contact_hand = false;
         self.contact_mouth = false;
     }
@@ -199,7 +221,10 @@ impl Body {
             pain_hand,
             pain_mouth,
             fullness,
+            gut_nutrient: (self.stomach_kcal / fx(150.0)).clamp01(),
+            gut_fluid: (self.stomach_water / fx(400.0)).clamp01(),
             fatigue: self.sleep_pressure,
+            acute_pain: noci_hand.max(noci_mouth),
             body_heat: (self.radiant * fx(1.5) - fx(0.1)).clamp(Fx::NEG_ONE, Fx::ONE),
             reflex_hand: noci_hand > k::reflex_threshold(),
             reflex_mouth: noci_mouth > k::reflex_threshold(),
@@ -207,7 +232,7 @@ impl Body {
     }
 
     pub fn age_years(&self) -> Fx {
-        Fx::from_int(self.age_s) / Fx::from_int(360 * 86_400)
+        Fx::ratio(self.age_s, 360 * 86_400)
     }
 }
 

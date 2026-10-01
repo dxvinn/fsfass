@@ -55,7 +55,7 @@ pub struct Touch {
 pub struct Taste {
     pub sweet: Fx,
     pub bitter: Fx,
-    pub watery: Fx,
+    pub liquid: Fx,
     /// Whether anything could be swallowed (soft enough / liquid).
     pub swallowed: Fx,
 }
@@ -85,11 +85,16 @@ pub struct Interoception {
     pub thirst: Fx,
     /// Overall pain (phasic + tonic).
     pub pain: Fx,
+    /// Acute nociceptor firing right now (a new hurt), 0..1.
+    pub acute_pain: Fx,
     /// Pain localised to the hand / mouth region.
     pub pain_hand: Fx,
     pub pain_mouth: Fx,
     /// Stomach fullness sensation.
     pub fullness: Fx,
+    /// Nutrient / water sensed in the gut (fast intake signals), 0..1.
+    pub gut_nutrient: Fx,
+    pub gut_fluid: Fx,
     pub fatigue: Fx,
     /// Overall thermal comfort: -1 too cold .. +1 too hot.
     pub body_heat: Fx,

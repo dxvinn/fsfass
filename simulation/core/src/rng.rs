@@ -54,10 +54,10 @@ impl Rng {
         mix64(self.key ^ self.ctr.wrapping_mul(0xD1B5_4A32_D192_ED03))
     }
 
-    /// Uniform in [0, 1) with 16 bits of resolution (exactly representable in Fx).
+    /// Uniform in [0, 1) with 32 bits of resolution (exactly representable in Fx).
     #[inline]
     pub fn unit(&mut self) -> Fx {
-        Fx((self.next_u64() >> 48) as i64)
+        Fx((self.next_u64() >> 32) as i64)
     }
 
     /// Uniform in [lo, hi).

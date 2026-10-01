@@ -35,8 +35,10 @@ dependencies = [
  "alife-biology",
  "alife-core",
  "alife-interface",
+ "alife-mind",
  "alife-world",
  "p0-determinism",
+ "p1-fire-learning",
 ]
 
 [[package]]
@@ -61,3 +63,10 @@ dependencies = [
 [[package]]
 name = "p1-fire-learning"
 version = "0.1.0"
+dependencies = [
+ "alife-biology",
+ "alife-core",
+ "alife-interface",
+ "alife-mind",
+ "alife-world",
+]

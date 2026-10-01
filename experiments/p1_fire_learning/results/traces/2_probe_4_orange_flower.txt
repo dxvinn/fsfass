@@ -1,0 +1,136 @@
+=== EXPERIENCED CHILD (seed 1) — FIRST SIGHT OF ORANGE FLOWER IN A NEW ROOM ===
+TIME day 3 00:00:00   (tick 172800, context X0)
+
+PERCEPTION
+  thing#000b at 5m: still, lit>0.2, matte, hue:orange, smooth, round  -> concept C5 (match 1.00) NEW
+
+NEEDS
+  hunger 0.50   thirst 0.20   pain 0.00   fatigue 0.25
+
+ATTENTION (workspace)
+  1. thing#000b (C5): still, lit>0.2, matte   salience 1.00
+  2. need: hunger   salience 0.50
+  3. memory: episode #17   salience 0.37
+  4. need: thirst   salience 0.20
+
+WORKING MEMORY
+  goal: relieve hunger using thing#000b
+  workspace capacity: 4 items
+
+MEMORIES ACTIVATED
+  episode #17 (5h ago): mouth C1 [still, medium, round, smooth, lit>0.2] felt swallowed+sweet -> water-intake 0.12   activation 2.24
+  episode #1 (47h ago): mouth C1 [still, round, smooth, lit>0.2, medium] felt swallowed+sweet -> nutrient-intake 0.60, water-intake 0.12   activation 2.15
+
+ASSOCIATIONS (target)
+  lit>0.2 -> water-intake   weight 0.08   evidence 394   (cue active 0.97)
+  still -> nutrient-intake   weight 0.07   evidence 246   (cue active 1.00)
+  lit>0.2 -> nutrient-intake   weight 0.06   evidence 394   (cue active 0.97)
+  mouth + lit>0.2 -> water-intake   weight 0.06 (minus extinction here 0.04)   evidence 499   (cue active 0.97)
+  mouth + smooth -> water-intake   weight 0.07 (minus extinction here 0.03)   evidence 458   (cue active 0.68)
+  still -> water-intake   weight 0.05   evidence 246   (cue active 1.00)
+  smooth -> water-intake   weight 0.07   evidence 395   (cue active 0.68)
+  round -> nutrient-intake   weight 0.07   evidence 399   (cue active 0.66)
+  smooth -> nutrient-intake   weight 0.06   evidence 395   (cue active 0.68)
+  round -> water-intake   weight 0.06   evidence 399   (cue active 0.66)
+  mouth + hue:orange -> pain   weight 0.05 (minus extinction here 0.00)   evidence 1   (cue active 0.72)
+  matte -> nutrient-intake   weight 0.04   evidence 268   (cue active 0.79)
+
+BELIEFS (explicit)
+  (none relevant)
+
+EMOTION
+  distress 0.18, fear 0.05, interest 0.03   mood P-0.24 A+0.25 D+0.15
+
+PREDICTIONS (expected outcome if I...)
+  mouth C5@5m            pain 0.03  nutrient 0.14  water 0.13   [last times: pain 0.00, nutrient 0.23, water 0.12]
+  touch C5@5m            pain 0.00  nutrient 0.00  water 0.00
+  approach C5@5m         pain 0.00  nutrient 0.00  water 0.00
+  rest                   pain 0.00  nutrient 0.00  water 0.00
+  wander                 pain 0.00  nutrient 0.00  water 0.00
+  inspect C5@5m from 2m  pain 0.00  nutrient 0.00  water 0.00
+
+DECISION SYSTEMS
+  REFLEX/GUT:  approach C5@5m (+0.14)
+  HABIT:       no preference
+  DELIBERATE:  mouth C5@5m (+0.12)
+  arbitration: deliberate weight 0.66 (reliability deliberate 0.97 vs habit 0.97)
+
+OPTION SCORES  total = deliberate + habit + gut + curiosity + persistence + noise
+  mouth C5@5m             +0.26 = +0.10 +0.00 +0.14 +0.02 +0.00 +0.01
+  touch C5@5m             +0.21 = -0.01 +0.00 +0.14 +0.02 +0.00 +0.06
+  approach C5@5m          +0.14 = +0.03 +0.00 +0.14 +0.01 +0.00 -0.05
+  rest                    +0.04 = +0.02 +0.00 +0.00 +0.00 +0.00 +0.02
+  wander                  +0.02 = +0.00 +0.00 +0.00 +0.00 +0.00 +0.02
+  inspect C5@5m from 2m   -0.03 = -0.01 +0.00 +0.04 +0.00 +0.00 -0.07
+
+FINAL ACTION: mouth C5@5m
+GOAL: relieve hunger using thing#000b
+WHY: mouth C5@5m: strongest reason = gut feeling (+0.14); memory: last times: pain 0.00, nutrient 0.23, water 0.12
+
+=== MOMENT A REACH WAS UNDER WAY (abort or follow through?) ===
+TIME day 3 00:00:05   (tick 172805, context X0)
+
+PERCEPTION
+  thing#000b at 1m: still, lit>0.2, hue:orange, matte, round, small  -> concept C5 (match 0.99)
+
+NEEDS
+  hunger 0.50   thirst 0.20   pain 0.00   fatigue 0.25
+
+ATTENTION (workspace)
+  1. thing#000b (C5): still, lit>0.2, hue:orange   salience 1.34
+  2. need: hunger   salience 0.50
+  3. memory: episode #17   salience 0.36
+  4. need: thirst   salience 0.20
+
+WORKING MEMORY
+  goal: relieve hunger using thing#000b
+  previous action: mouth C5@1m
+  workspace capacity: 4 items
+
+MEMORIES ACTIVATED
+  episode #17 (5h ago): mouth C1 [still, medium, round, smooth, lit>0.2] felt swallowed+sweet -> water-intake 0.12   activation 2.16
+  episode #1 (2d ago): mouth C1 [still, round, smooth, lit>0.2, medium] felt swallowed+sweet -> nutrient-intake 0.60, water-intake 0.12   activation 2.07
+
+ASSOCIATIONS (target)
+  lit>0.2 -> water-intake   weight 0.08   evidence 394   (cue active 0.96)
+  still -> nutrient-intake   weight 0.07   evidence 246   (cue active 1.00)
+  lit>0.2 -> nutrient-intake   weight 0.06   evidence 394   (cue active 0.96)
+  mouth + lit>0.2 -> water-intake   weight 0.06 (minus extinction here 0.04)   evidence 499   (cue active 0.96)
+  still -> water-intake   weight 0.05   evidence 246   (cue active 1.00)
+  round -> nutrient-intake   weight 0.07   evidence 399   (cue active 0.71)
+  mouth + smooth -> water-intake   weight 0.07 (minus extinction here 0.03)   evidence 458   (cue active 0.59)
+  mouth + hue:orange -> pain   weight 0.05 (minus extinction here 0.00)   evidence 1   (cue active 0.86)
+  round -> water-intake   weight 0.06   evidence 399   (cue active 0.71)
+  smooth -> water-intake   weight 0.07   evidence 395   (cue active 0.59)
+  smooth -> nutrient-intake   weight 0.06   evidence 395   (cue active 0.59)
+  matte -> nutrient-intake   weight 0.04   evidence 268   (cue active 0.79)
+
+BELIEFS (explicit)
+  (none relevant)
+
+EMOTION
+  distress 0.15, fear 0.04, interest 0.03   mood P-0.23 A+0.24 D+0.15
+
+PREDICTIONS (expected outcome if I...)
+  mouth C5@1m            pain 0.04  nutrient 0.14  water 0.13   [last times: pain 0.00, nutrient 0.23, water 0.12]
+  touch C5@1m            pain 0.00  nutrient 0.00  water 0.00
+  wander                 pain 0.00  nutrient 0.00  water 0.00
+  rest                   pain 0.00  nutrient 0.00  water 0.00
+  inspect C5@1m from 2m  pain 0.00  nutrient 0.00  water 0.00
+
+DECISION SYSTEMS
+  REFLEX/GUT:  touch C5@1m (+0.14)
+  HABIT:       no preference
+  DELIBERATE:  mouth C5@1m (+0.11)
+  arbitration: deliberate weight 0.66 (reliability deliberate 0.97 vs habit 0.97)
+
+OPTION SCORES  total = deliberate + habit + gut + curiosity + persistence + noise
+  mouth C5@1m             +0.32 = +0.09 +0.00 +0.14 +0.02 +0.10 -0.03
+  touch C5@1m             +0.18 = -0.01 +0.00 +0.14 +0.02 +0.00 +0.03
+  wander                  +0.06 = +0.00 +0.00 +0.00 +0.00 +0.00 +0.06
+  rest                    -0.02 = +0.02 +0.00 +0.00 +0.00 +0.00 -0.04
+  inspect C5@1m from 2m   -0.02 = -0.01 +0.00 +0.04 +0.00 +0.00 -0.06
+
+FINAL ACTION: mouth C5@1m
+GOAL: relieve hunger using thing#000b
+WHY: mouth C5@1m: strongest reason = gut feeling (+0.14); memory: last times: pain 0.00, nutrient 0.23, water 0.12

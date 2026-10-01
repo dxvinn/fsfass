@@ -12,3 +12,5 @@ alife-interface = { path = "../simulation/interface" }
 alife-biology = { path = "../simulation/biology" }
 alife-world = { path = "../simulation/world" }
 p0-determinism = { path = "../experiments/p0_determinism" }
+alife-mind = { path = "../simulation/mind" }
+p1-fire-learning = { path = "../experiments/p1_fire_learning" }

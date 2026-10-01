@@ -36,6 +36,16 @@ pub struct AgentBody {
     pub tasted: Option<(u32, Taste)>,
     /// Object last contacted (for the withdrawal reflex direction).
     pub last_contact: Option<u32>,
+    /// Hand or face currently held close to an object, about to make contact.
+    pub reaching: Option<(u32, Reach)>,
+}
+
+/// Contact is a two-step motor act: first the hand/face nears the surface
+/// (feeling its radiant heat), then it makes contact on the next step.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reach {
+    Hand,
+    Mouth,
 }
 
 /// Truth-side log of physical interactions, for experiment metrics only.
@@ -119,6 +129,7 @@ impl World {
             touched: None,
             tasted: None,
             last_contact: None,
+            reaching: None,
         });
         self.agents.len() - 1
     }
@@ -223,6 +234,7 @@ impl World {
         // Innate withdrawal reflex: a limb or the head is pulled away from a painful contact.
         let sig = self.agents[ai].body.signals;
         if sig.reflex_hand || sig.reflex_mouth {
+            self.agents[ai].reaching = None;
             if let Some(oid) = self.agents[ai].last_contact {
                 if let Some(o) = self.objects.iter().find(|o| o.id == oid) {
                     let (tx, ty) = (o.x, o.y);
@@ -232,6 +244,7 @@ impl World {
             return MotorResult::Overridden;
         }
         let agent_id = self.agents[ai].id;
+        let prev_reach = self.agents[ai].reaching.take();
         match cmd {
             MotorCommand::Rest => MotorResult::Ok,
             MotorCommand::Wander { dir } => {
@@ -284,7 +297,13 @@ impl World {
                             }
                             return MotorResult::Ok;
                         }
-                        self.touch(ai, oi);
+                        let oid = self.objects[oi].id;
+                        if prev_reach == Some((oid, Reach::Hand)) {
+                            self.touch(ai, oi);
+                        } else {
+                            self.agents[ai].reaching = Some((oid, Reach::Hand));
+                            self.agents[ai].last_contact = Some(oid);
+                        }
                         MotorResult::Ok
                     }
                     MotorCommand::Mouth { .. } => {
@@ -294,7 +313,13 @@ impl World {
                             }
                             return MotorResult::Ok;
                         }
-                        self.mouth(ai, oi);
+                        let oid = self.objects[oi].id;
+                        if prev_reach == Some((oid, Reach::Mouth)) {
+                            self.mouth(ai, oi);
+                        } else {
+                            self.agents[ai].reaching = Some((oid, Reach::Mouth));
+                            self.agents[ai].last_contact = Some(oid);
+                        }
                         MotorResult::Ok
                     }
                     _ => unreachable!(),
@@ -346,7 +371,7 @@ impl World {
         let taste = Taste {
             sweet: if swallowable { p.sugar } else { p.sugar * fx(0.3) },
             bitter: p.bitter,
-            watery: if p.liquid { Fx::ONE } else { p.wet * fx(0.5) },
+            liquid: if p.liquid { Fx::ONE } else { p.wet * fx(0.5) },
             swallowed: if swallowable { Fx::ONE } else { Fx::ZERO },
         };
         self.agents[ai].tasted = Some((oid, taste));
@@ -379,6 +404,16 @@ impl World {
         (strength / (d2 + fx(0.5))).clamp01()
     }
 
+    /// Radiant warmth on a hand or face held a few centimetres from the object's surface.
+    pub fn radiant_close(&self, o: &Object) -> Fx {
+        let excess = o.props.temp_c - fx(30.0);
+        if !excess.is_positive() {
+            return Fx::ZERO;
+        }
+        let strength = excess / fx(700.0) * o.props.size * fx(2.5);
+        (strength / fx(0.55)).clamp01()
+    }
+
     fn radiant_heat(&mut self) {
         for ai in 0..self.agents.len() {
             let (x, y) = (self.agents[ai].x, self.agents[ai].y);
@@ -387,6 +422,16 @@ impl World {
                 total += self.radiant_from(o, x, y);
             }
             self.agents[ai].body.add_radiant(total);
+            if let Some((oid, reach)) = self.agents[ai].reaching {
+                if let Some(o) = self.objects.iter().find(|o| o.id == oid && o.present) {
+                    let close = self.radiant_close(o);
+                    let site = match reach {
+                        Reach::Hand => Site::Hand,
+                        Reach::Mouth => Site::Mouth,
+                    };
+                    self.agents[ai].body.add_radiant_site(site, close);
+                }
+            }
         }
     }
 }
@@ -412,6 +457,7 @@ impl StableHash for World {
             a.y.stable_hash(h);
             a.body.stable_hash(h);
             (a.last_result as u8 as u64).stable_hash(h);
+            a.reaching.map(|(o, r)| (o, r as u8)).stable_hash(h);
         }
         self.events.stable_hash(h);
         (self.contacts.len() as u64).stable_hash(h);

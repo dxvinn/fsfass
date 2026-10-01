@@ -53,6 +53,17 @@ pub fn random_command(world: &World, ai: usize) -> MotorCommand {
     if frame.percepts.is_empty() {
         return MotorCommand::Wander { dir: r.below(8) as u8 };
     }
+    // Usually follow through on a reach that was started (contact takes two steps).
+    let a = &world.agents[ai];
+    if let Some((oid, reach)) = a.reaching {
+        if r.chance(fx(0.7)) {
+            let target = world.token_for(a.id, oid);
+            return match reach {
+                alife_world::Reach::Hand => MotorCommand::Touch { target },
+                alife_world::Reach::Mouth => MotorCommand::Mouth { target },
+            };
+        }
+    }
     let t = frame.percepts[r.below(frame.percepts.len() as u64) as usize].token;
     match r.below(8) {
         0 => MotorCommand::Rest,

@@ -1,9 +1,9 @@
 # P0 determinism report
 
 - Scenario: 12x12 room, 6 objects, 3 bodies, random policy, 20000 ticks (1 tick = 1 game second)
-- Reference hash (seed 42): `8ce6fe43538a7317`
-- Physical contacts in reference run: 977 (227 with FIRE_A)
-- Wall time per run: 71.8 ms
+- Reference hash (seed 42): `67ed3d10d20a8536`
+- Physical contacts in reference run: 701 (147 with FIRE_A)
+- Wall time per run: 63.4 ms
 
 | Check | Result |
 |---|---|

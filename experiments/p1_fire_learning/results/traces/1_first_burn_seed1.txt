@@ -1,0 +1,149 @@
+=== DECISION THAT LED TO THE FIRST BURN ===
+TIME day 1 00:00:12   (tick 12, context X0)
+
+PERCEPTION
+  thing#c870 at 1m: still, round, smooth, hue:red, lit>0.2, medium  -> concept C1 (match 0.99)
+  thing#3184 at 1m: lit>0.2, bright>0.45, warmth>0.1, warmth>0.3, warmth>0.5, warmth>0.7, felt warmth 0.99  -> concept C4 (match 1.00)
+  thing#4799 at 3m: smooth, glossy, large, round, lit>0.2, still  -> concept C2 (match 0.99)
+  thing#f485 at 5m: still, matte, colourless, rough, dark, medium  -> concept C3 (match 0.99)
+
+NEEDS
+  hunger 0.13   thirst 0.25   pain 0.00   fatigue 0.25
+
+ATTENTION (workspace)
+  1. thing#3184 (C4): lit>0.2, bright>0.45, warmth>0.1   salience 2.09
+  2. thing#c870 (C1): still, round, smooth   salience 1.20
+  3. thing#4799 (C2): smooth, glossy, large   salience 1.12
+  4. memory: episode #1   salience 1.04
+
+WORKING MEMORY
+  goal: find out about thing#3184
+  previous action: mouth C4@1m
+  workspace capacity: 4 items
+
+MEMORIES ACTIVATED
+  episode #1 (8s ago): mouth C1 [still, round, smooth, lit>0.2, medium] felt swallowed+sweet -> nutrient-intake 0.60, water-intake 0.12   activation 6.22
+  episode #2 (6s ago): mouth C1 [still, round, smooth, medium, dark] felt swallowed+sweet -> nutrient-intake 0.60, water-intake 0.12   activation 6.03
+
+ASSOCIATIONS (target)
+  lit>0.2 -> nutrient-intake   weight 0.04   evidence 11   (cue active 1.00)
+
+BELIEFS (explicit)
+  (none relevant)
+
+EMOTION
+  interest 0.44, joy 0.42, surprise 0.19   mood P+0.16 A+0.43 D+0.10
+
+PREDICTIONS (expected outcome if I...)
+  mouth C4@1m            pain 0.00  nutrient 0.09  water 0.02
+  approach C2@3m         pain 0.00  nutrient 0.00  water 0.00
+  touch C4@1m            pain 0.00  nutrient 0.09  water 0.02
+  touch C2@3m            pain 0.00  nutrient 0.10  water 0.02
+  mouth C1@1m            pain 0.00  nutrient 0.44  water 0.09   [last times: pain 0.00, nutrient 0.60, water 0.12]
+  touch C1@1m            pain 0.00  nutrient 0.23  water 0.05
+  mouth C2@3m            pain 0.00  nutrient 0.32  water 0.07   [last times: pain 0.00, nutrient 0.60, water 0.12]
+  inspect C1@1m from 2m  pain 0.00  nutrient 0.00  water 0.00
+
+DECISION SYSTEMS
+  REFLEX/GUT:  touch C1@1m (+0.05)
+  HABIT:       mouth C1@1m (+0.03)
+  DELIBERATE:  mouth C4@1m (+0.22)
+  arbitration: deliberate weight 0.65 (reliability deliberate 0.56 vs habit 0.57)
+
+OPTION SCORES  total = deliberate + habit + gut + curiosity + persistence + noise
+  mouth C4@1m             +0.36 = +0.00 +0.00 +0.03 +0.22 +0.11 +0.01
+  approach C2@3m          +0.22 = +0.00 +0.00 +0.03 +0.13 +0.00 +0.06
+  touch C4@1m             +0.20 = -0.00 +0.00 +0.03 +0.18 +0.00 -0.01
+  touch C2@3m             +0.19 = +0.00 +0.00 +0.03 +0.15 +0.00 +0.01
+  mouth C1@1m             +0.19 = +0.02 +0.03 +0.05 +0.14 +0.00 -0.05
+  touch C1@1m             +0.17 = +0.01 -0.00 +0.05 +0.14 +0.00 -0.03
+  mouth C2@3m             +0.14 = +0.02 +0.00 +0.03 +0.16 +0.00 -0.06
+  inspect C1@1m from 2m   +0.10 = -0.01 +0.00 +0.01 +0.06 +0.00 +0.03
+
+FINAL ACTION: mouth C4@1m
+GOAL: find out about thing#3184
+WHY: mouth C4@1m: strongest reason = curiosity (+0.22)
+
+=== NEXT MOMENT (outcome, learning, reflex) ===
+TIME day 1 00:00:13   (tick 13, context X0)
+
+PERCEPTION
+  thing#c870 at 1m: still, round, smooth, medium, dark, matte  -> concept C1 (match 1.00)
+  thing#3184 at 1m: lit>0.2, bright>0.45, flickering, warmth>0.1, warmth>0.3, warmth>0.5, felt warmth 0.79  -> concept C4 (match 0.97)
+  thing#4799 at 3m: smooth, glossy, large, round, lit>0.2, still  -> concept C2 (match 1.00)
+  thing#f485 at 5m: still, matte, colourless, medium, dark, rough  -> concept C3 (match 1.00)
+
+NEEDS
+  hunger 0.13   thirst 0.25   pain 1.00   fatigue 0.25
+
+ATTENTION (workspace)
+  1. thing#3184 (C4): lit>0.2, bright>0.45, flickering   salience 1.90
+  2. need: pain   salience 1.50
+  3. thing#c870 (C1): still, round, smooth   salience 1.19
+  4. thing#4799 (C2): smooth, glossy, large   salience 1.11
+
+WORKING MEMORY
+  goal: avoid harm from thing#3184
+  previous action: mouth C4@1m
+  workspace capacity: 4 items
+
+MEMORIES ACTIVATED
+  episode #5 [pinned] (0s ago): mouth C4 [lit>0.2, bright>0.45, warmth>0.1, warmth>0.3, warmth>0.5] -> pain 1.00   activation 6.43
+  episode #1 (9s ago): mouth C1 [still, round, smooth, lit>0.2, medium] felt swallowed+sweet -> nutrient-intake 0.60, water-intake 0.12   activation 4.05
+  episode #2 (7s ago): mouth C1 [still, round, smooth, medium, dark] felt swallowed+sweet -> nutrient-intake 0.60, water-intake 0.12   activation 6.09
+
+ASSOCIATIONS (target)
+  warmth>0.5 -> pain   weight 0.08   evidence 1   (cue active 1.00)
+  warmth>0.7 -> pain   weight 0.08   evidence 1   (cue active 1.00)
+  concept C4 -> pain   weight 0.08   evidence 4   (cue active 0.97)
+  mouth + warmth>0.5 -> pain   weight 0.07   evidence 1   (cue active 1.00)
+  mouth + warmth>0.7 -> pain   weight 0.07   evidence 1   (cue active 1.00)
+  mouth + concept C4 -> pain   weight 0.07   evidence 1   (cue active 0.97)
+  warmth>0.3 -> pain   weight 0.07   evidence 3   (cue active 1.00)
+  flickering -> pain   weight 0.07   evidence 4   (cue active 1.00)
+  mouth + warmth>0.3 -> pain   weight 0.07   evidence 1   (cue active 1.00)
+  mouth + flickering -> pain   weight 0.07   evidence 1   (cue active 1.00)
+  warmth-felt -> pain   weight 0.08   evidence 4   (cue active 0.79)
+  mouth + warmth-felt -> pain   weight 0.07   evidence 1   (cue active 0.79)
+  lit>0.2 -> pain   weight 0.06   evidence 14   (cue active 1.00)
+  bright>0.45 -> pain   weight 0.05   evidence 4   (cue active 1.00)
+
+BELIEFS (explicit)
+  (none relevant)
+
+EMOTION
+  distress 1.00, surprise 1.00, interest 0.41, joy 0.41, fear 0.28   mood P+0.17 A+0.42 D+0.10
+
+PREDICTIONS (expected outcome if I...)
+  withdraw from C4@1m    pain 0.00  nutrient 0.00  water 0.00
+  touch C1@1m            pain 0.03  nutrient 0.24  water 0.05
+  mouth C1@1m            pain 0.03  nutrient 0.44  water 0.09   [last times: pain 0.00, nutrient 0.60, water 0.12]
+  mouth C2@3m            pain 0.03  nutrient 0.32  water 0.07   [last times: pain 0.00, nutrient 0.60, water 0.12]
+  inspect C4@1m from 2m  pain 0.00  nutrient 0.00  water 0.00
+  touch C2@3m            pain 0.04  nutrient 0.10  water 0.02
+  approach C2@3m         pain 0.00  nutrient 0.00  water 0.00
+  inspect C1@1m from 2m  pain 0.00  nutrient 0.00  water 0.00
+
+DECISION SYSTEMS
+  REFLEX/GUT:  withdraw from C4@1m (+0.30)
+  HABIT:       mouth C1@1m (+0.03)
+  DELIBERATE:  inspect C4@1m from 2m (+0.19)
+  arbitration: deliberate weight 0.62 (reliability deliberate 0.51 vs habit 0.54)
+
+OPTION SCORES  total = deliberate + habit + gut + curiosity + persistence + noise
+  withdraw from C4@1m     +0.24 = -0.01 +0.00 +0.30 +0.00 +0.00 -0.05
+  touch C1@1m             +0.22 = -0.01 -0.00 +0.05 +0.13 +0.00 +0.06
+  mouth C1@1m             +0.18 = +0.00 +0.03 +0.05 +0.11 +0.00 -0.02
+  mouth C2@3m             +0.16 = -0.01 +0.00 +0.03 +0.12 +0.00 +0.02
+  inspect C4@1m from 2m   +0.16 = +0.12 +0.00 +0.01 +0.06 +0.00 -0.03
+  touch C2@3m             +0.12 = -0.03 +0.00 +0.03 +0.13 +0.00 -0.02
+  approach C2@3m          +0.11 = -0.01 +0.00 +0.03 +0.12 +0.00 -0.03
+  inspect C1@1m from 2m   +0.10 = -0.00 +0.00 +0.01 +0.06 +0.00 +0.03
+
+FINAL ACTION: withdraw from C4@1m
+GOAL: avoid harm from thing#3184
+WHY: withdraw from C4@1m: strongest reason = gut feeling (+0.30)
+
+LEARNING THIS MOMENT
+  mouth [lit>0.2, bright>0.45, warmth>0.1, warmth>0.3]: expected pain 0.00 nutrient 0.09 water 0.02; got 1.00 / 0.00 / 0.00; surprise 1.00; learning rate 0.69
+  pavlovian: things in mind predicted pain 0.00, got 1.00; 36 cue weights updated

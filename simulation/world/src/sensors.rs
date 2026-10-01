@@ -37,7 +37,12 @@ pub fn sense(world: &World, ai: usize) -> SensoryFrame {
             texture: (p.roughness + noise(&mut rng, fx(0.03))).clamp01(),
             gloss: (p.gloss + noise(&mut rng, fx(0.03))).clamp01(),
         };
-        let felt_warmth = (world.radiant_from(o, a.x, a.y) + noise(&mut rng, fx(0.01))).clamp01();
+        // Warmth felt from this direction; much stronger on a hand/face held close to it.
+        let mut warmth = world.radiant_from(o, a.x, a.y);
+        if a.reaching.map(|(id, _)| id) == Some(o.id) {
+            warmth = warmth.max(world.radiant_close(o));
+        }
+        let felt_warmth = (warmth + noise(&mut rng, fx(0.01))).clamp01();
         let touch = a.touched.and_then(|(id, t)| (id == o.id).then_some(t));
         let taste = a.tasted.and_then(|(id, t)| (id == o.id).then_some(t));
         percepts.push(Percept {
@@ -62,9 +67,12 @@ pub fn sense(world: &World, ai: usize) -> SensoryFrame {
             hunger: s.hunger,
             thirst: s.thirst,
             pain: s.pain,
+            acute_pain: s.acute_pain,
             pain_hand: s.pain_hand,
             pain_mouth: s.pain_mouth,
             fullness: s.fullness,
+            gut_nutrient: s.gut_nutrient,
+            gut_fluid: s.gut_fluid,
             fatigue: s.fatigue,
             body_heat: s.body_heat,
             reflex_active: s.reflex_hand || s.reflex_mouth,

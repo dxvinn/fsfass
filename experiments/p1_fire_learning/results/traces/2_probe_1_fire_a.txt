@@ -1,0 +1,70 @@
+=== EXPERIENCED CHILD (seed 1) — FIRST SIGHT OF FIRE A IN A NEW ROOM ===
+TIME day 3 00:00:00   (tick 172800, context X0)
+
+PERCEPTION
+  thing#86ff at 5m: lit>0.2, bright>0.45, glaring>0.7, flickering, hue:orange, matte, felt warmth 0.03  -> concept C4 (match 1.00)
+
+NEEDS
+  hunger 0.50   thirst 0.20   pain 0.00   fatigue 0.25
+
+ATTENTION (workspace)
+  1. thing#86ff (C4): lit>0.2, bright>0.45, glaring>0.7   salience 0.76
+  2. need: hunger   salience 0.50
+  3. memory: episode #5   salience 0.42
+  4. need: thirst   salience 0.20
+
+WORKING MEMORY
+  goal: find out about thing#86ff
+  workspace capacity: 4 items
+
+MEMORIES ACTIVATED
+  episode #5 [pinned] (47h ago): mouth C4 [lit>0.2, bright>0.45, warmth>0.1, warmth>0.3, warmth>0.5] -> pain 1.00   activation 2.52
+  episode #19 (3h ago): mouth C2 [smooth, glossy, round, large, lit>0.2] felt watery+swallowed -> water-intake 0.62   activation 1.37
+
+ASSOCIATIONS (target)
+  mouth + concept C4 -> pain   weight 0.08   evidence 1   (cue active 1.00)
+  lit>0.2 -> water-intake   weight 0.08   evidence 394   (cue active 1.00)
+  mouth + flickering -> pain   weight 0.07   evidence 1   (cue active 0.98)
+  mouth + glaring>0.7 -> pain   weight 0.07   evidence 1   (cue active 1.00)
+  lit>0.2 -> nutrient-intake   weight 0.06   evidence 394   (cue active 1.00)
+  mouth + lit>0.2 -> water-intake   weight 0.06 (minus extinction here 0.04)   evidence 499   (cue active 1.00)
+  mouth + bright>0.45 -> pain   weight 0.06   evidence 1   (cue active 1.00)
+  mouth + large -> water-intake   weight 0.09 (minus extinction here 0.01)   evidence 83   (cue active 0.53)
+  concept C4 -> pain   weight 0.05 (minus extinction here 0.06)   evidence 153   (cue active 1.00)
+  flickering -> pain   weight 0.04 (minus extinction here 0.05)   evidence 153   (cue active 0.98)
+  mouth + hue:orange -> pain   weight 0.05 (minus extinction here 0.00)   evidence 1   (cue active 0.82)
+  large -> water-intake   weight 0.07   evidence 284   (cue active 0.53)
+  bright>0.45 -> pain   weight 0.03 (minus extinction here 0.04)   evidence 153   (cue active 1.00)
+  matte -> nutrient-intake   weight 0.04   evidence 268   (cue active 0.79)
+
+BELIEFS (explicit)
+  (none relevant)
+
+EMOTION
+  distress 0.18, fear 0.05   mood P-0.24 A+0.25 D+0.15
+
+PREDICTIONS (expected outcome if I...)
+  touch C4@5m            pain 0.01  nutrient 0.00  water 0.00
+  rest                   pain 0.00  nutrient 0.00  water 0.00
+  wander                 pain 0.00  nutrient 0.00  water 0.00
+  approach C4@5m         pain 0.00  nutrient 0.00  water 0.00
+  inspect C4@5m from 2m  pain 0.00  nutrient 0.00  water 0.00
+  mouth C4@5m            pain 0.40  nutrient 0.03  water 0.19   [last times: pain 0.55, nutrient 0.00, water 0.28]
+
+DECISION SYSTEMS
+  REFLEX/GUT:  no preference
+  HABIT:       no preference
+  DELIBERATE:  rest (+0.02)
+  arbitration: deliberate weight 0.66 (reliability deliberate 0.97 vs habit 0.97)
+
+OPTION SCORES  total = deliberate + habit + gut + curiosity + persistence + noise
+  touch C4@5m             +0.06 = -0.01 +0.00 -0.00 +0.01 +0.00 +0.06
+  rest                    +0.04 = +0.02 +0.00 +0.00 +0.00 +0.00 +0.02
+  wander                  +0.02 = +0.00 +0.00 +0.00 +0.00 +0.00 +0.02
+  approach C4@5m          -0.05 = -0.01 +0.00 -0.00 +0.01 +0.00 -0.05
+  inspect C4@5m from 2m   -0.07 = -0.01 +0.00 -0.00 +0.01 +0.00 -0.07
+  mouth C4@5m             -0.62 = -0.26 -0.37 -0.00 +0.00 +0.00 +0.01
+
+FINAL ACTION: touch C4@5m
+GOAL: find out about thing#86ff
+WHY: touch C4@5m: strongest reason = expected outcome (deliberate) (-0.01)
