@@ -20,10 +20,14 @@ use alife_core::hash::{StableHash, StateHasher};
 use alife_core::{fx, Fx};
 
 pub const N_CUES: usize = N_SENSE + MAX_CONCEPTS;
-pub const N_OUT: usize = 3;
+pub const N_OUT: usize = 5;
 pub const O_PAIN: usize = 0;
 pub const O_NOURISH: usize = 1;
 pub const O_HYDRATE: usize = 2;
+/// Comforting social contact (innate affiliation signal).
+pub const O_SOCIAL: usize = 3;
+/// Relief from cold (warming up).
+pub const O_WARM: usize = 4;
 pub const N_ACT: usize = 6;
 pub const A_APPROACH: usize = 0;
 pub const A_INSPECT: usize = 1;
@@ -36,7 +40,7 @@ pub const A_CONTACT: usize = 5;
 
 /// Outcome salience (the beta of Rescorla–Wagner): pain is maximally salient.
 pub fn outcome_salience(o: usize) -> Fx {
-    [fx(1.0), fx(0.6), fx(0.6)][o]
+    [fx(1.0), fx(0.6), fx(0.6), fx(0.6), fx(0.6)][o]
 }
 pub const N_CTX: usize = 8;
 
@@ -67,7 +71,7 @@ fn snorm2(x: &CueVec) -> Fx {
 }
 
 pub fn outcome_label(o: usize) -> &'static str {
-    ["pain", "nutrient-intake", "fluid-intake"][o]
+    ["pain", "nutrient-intake", "fluid-intake", "comfort", "warmth"][o]
 }
 
 pub fn action_label(a: usize) -> &'static str {

@@ -9,6 +9,8 @@ members = [
     "experiments/p0_determinism",
     "experiments/p1_fire_learning",
     "tests",
+    "game/sim",
+    "game/gdext",
 ]
 
 [workspace.package]

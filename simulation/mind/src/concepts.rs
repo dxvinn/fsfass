@@ -6,7 +6,7 @@
 //! prototype moves slightly toward it; otherwise a new concept is created.
 //! Concept ids are private to this mind ("C3" means nothing to anyone else).
 
-use crate::encode::{cosine, SenseVec, N_VISUAL};
+use crate::encode::{SenseVec, N_VISUAL};
 use alife_core::hash::{StableHash, StateHasher};
 use alife_core::{fx, Fx};
 
@@ -20,6 +20,8 @@ pub struct Concept {
     pub seen: u32,
     pub last_seen: u64,
     pub created: u64,
+    /// Cached Euclidean norm of the prototype.
+    pub norm: Fx,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -54,9 +56,12 @@ impl ConceptStore {
     /// Best match without learning.
     pub fn peek(&self, u: &SenseVec) -> Option<(usize, Fx)> {
         let v = Self::visual(u);
+        let vn = crate::encode::norm2(&v).sqrt();
         let mut best: Option<(usize, Fx)> = None;
         for (i, c) in self.concepts.iter().enumerate() {
-            let s = cosine(&v, &c.proto);
+            let dot = v.iter().zip(c.proto.iter()).fold(Fx::ZERO, |s, (&a, &b)| s + a * b);
+            let pn = c.norm;
+            let s = if vn.raw() == 0 || pn.raw() == 0 { Fx::ZERO } else { dot / (vn * pn) };
             if best.map_or(true, |(_, b)| s > b) {
                 best = Some((i, s));
             }
@@ -76,12 +81,13 @@ impl ConceptStore {
                 }
                 c.seen += 1;
                 c.last_seen = tick;
+                c.norm = crate::encode::norm2(&c.proto).sqrt();
                 return Recognition { slot: i, id: c.id, similarity: s, novel: false, replaced: None };
             }
         }
         let id = self.next_id;
         self.next_id = self.next_id.wrapping_add(1).max(1);
-        let c = Concept { id, proto: v, seen: 1, last_seen: tick, created: tick };
+        let c = Concept { id, proto: v, seen: 1, last_seen: tick, created: tick, norm: crate::encode::norm2(&v).sqrt() };
         let mut replaced = None;
         let slot = if self.concepts.len() < MAX_CONCEPTS {
             self.concepts.push(c);

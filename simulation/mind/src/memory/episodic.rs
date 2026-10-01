@@ -86,7 +86,7 @@ impl EpisodicMemory {
     pub fn base_level(e: &Episode, now: u64) -> Fx {
         let d = Fx::HALF;
         let hours = Fx::from_int((now.saturating_sub(e.last_recall.max(e.tick))) as i64) / fx(3600.0) + fx(0.0167);
-        (Fx::from_int(e.recalls as i64 + 1) / (Fx::ONE - d)).ln() - d * hours.ln()
+        (Fx::from_int(e.recalls as i64 + 1) / (Fx::ONE - d)).ln_fast() - d * hours.ln_fast()
     }
 
     pub fn store(&mut self, mut e: Episode) -> u32 {
@@ -142,8 +142,22 @@ impl EpisodicMemory {
     /// Retrieve up to `k` episodes matching a cue (and optionally an action).
     pub fn retrieve(&self, cue: &SenseVec, concept: u16, action: Option<u8>, now: u64, k: usize) -> Vec<Recall> {
         let mut out: Vec<Recall> = Vec::new();
+        let cn = crate::encode::norm2(cue).sqrt();
+        if cn.raw() == 0 {
+            return out;
+        }
         for e in self.all() {
-            let sim = crate::encode::cosine(cue, &e.sense_vec());
+            // Sparse cosine: episodes store only their strongest features.
+            let mut dot = Fx::ZERO;
+            let mut en2 = Fx::ZERO;
+            for &(u, a) in &e.features {
+                dot += cue[u as usize] * a;
+                en2 += a * a;
+            }
+            if dot.raw() <= 0 {
+                continue;
+            }
+            let sim = dot / (cn * en2.sqrt());
             if sim < fx(0.3) {
                 continue;
             }

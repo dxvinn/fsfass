@@ -76,6 +76,8 @@ pub fn sense(world: &World, ai: usize) -> SensoryFrame {
             fatigue: s.fatigue,
             body_heat: s.body_heat,
             reflex_active: s.reflex_hand || s.reflex_mouth,
+            loneliness: Fx::ZERO,
+            social_comfort: Fx::ZERO,
         },
         ambient: world.ambient,
         last_result: a.last_result,

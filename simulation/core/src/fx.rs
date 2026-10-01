@@ -181,6 +181,22 @@ impl Fx {
         Fx((total >> (P - FRAC)) as i64)
     }
 
+    /// Fast natural log (piecewise-linear log2 mantissa; abs. error < 0.01).
+    /// Monotonic, deterministic; for rankings such as memory activation.
+    pub fn ln_fast(self) -> Fx {
+        if self.0 <= 0 {
+            return Fx::from_int(-40);
+        }
+        let msb = 63 - self.0.leading_zeros() as i64;
+        let e = msb - FRAC as i64;
+        // mantissa fraction in Q32: (x / 2^msb) - 1
+        let frac: i64 = if msb >= FRAC as i64 { (self.0 - (1i64 << msb)) >> (msb - FRAC as i64) } else { (self.0 - (1i64 << msb)) << (FRAC as i64 - msb) };
+        // log2(1+f) ~ f + 0.0861*f*(1-f) (max err ~0.004)
+        let f = Fx(frac);
+        let log2 = Fx::from_int(e) + f + Fx(369_814_528) * f * (Fx::ONE - f);
+        log2 * Fx(2_977_044_472) // ln 2
+    }
+
     /// Logistic sigmoid 1 / (1 + e^-x).
     pub fn sigmoid(self) -> Fx {
         if self.0 >= 0 {

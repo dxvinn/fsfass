@@ -98,6 +98,10 @@ pub struct Interoception {
     pub fatigue: Fx,
     /// Overall thermal comfort: -1 too cold .. +1 too hot.
     pub body_heat: Fx,
+    /// Social need (time without company), 0..1.
+    pub loneliness: Fx,
+    /// Comforting touch / closeness felt right now, 0..1.
+    pub social_comfort: Fx,
     /// True while a protective reflex is pulling a limb away.
     pub reflex_active: bool,
 }

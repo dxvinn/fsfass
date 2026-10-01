@@ -133,6 +133,9 @@ struct PState {
     pav_value: Fx,
     salience: Fx,
     intensity: Fx,
+    /// Per-cycle cache: generalised outcome prediction and evidence for each action.
+    pred: [Out; N_ACT],
+    ev: [Fx; N_ACT],
 }
 
 #[derive(Clone, Debug)]
@@ -184,7 +187,7 @@ pub struct Mind {
     pub last_learning: Vec<String>,
 }
 
-const AVERSIVE: [bool; N_OUT] = [true, false, false];
+const AVERSIVE: [bool; N_OUT] = [true, false, false, false, false];
 
 impl Mind {
     pub fn new(id: u64, seed: u64, age_years: Fx, personality: Personality) -> Mind {
@@ -343,12 +346,25 @@ impl Mind {
                 pav_value: Fx::ZERO,
                 salience: Fx::ZERO,
                 intensity,
+                pred: [[Fx::ZERO; N_OUT]; N_ACT],
+                ev: [Fx::ZERO; N_ACT],
             });
         }
         let valence = drives::innate_valence(&f.body);
         for q in ps.iter_mut() {
             q.pav = self.assoc.predict_pav(&q.cue, ctx);
             q.pav_value = (0..N_OUT).fold(Fx::ZERO, |s, o| s + q.pav[o] * valence[o]);
+            // Only what attention needs for everything; full predictions later for attended things.
+            for a in [A_MOUTH, A_CONTACT] {
+                q.ev[a] = self.assoc.evidence_for(a, &q.cue);
+                q.pred[a] = self.assoc.predict_inst(a, &q.cue, ctx);
+            }
+            // Contact acts generalise from the contact family when specific evidence is low.
+            let fam = q.pred[A_CONTACT];
+            let w_family = fx(2.0) / (fx(2.0) + q.ev[A_MOUTH]);
+            for o in 0..N_OUT {
+                q.pred[A_MOUTH][o] = q.pred[A_MOUTH][o] * (Fx::ONE - w_family) + fam[o] * w_family;
+            }
         }
 
         // 2. Outcome evaluation and learning.
@@ -367,11 +383,11 @@ impl Mind {
         for q in ps.iter_mut() {
             let seen = self.concepts.concepts.get(q.rec.slot).map(|c| c.seen).unwrap_or(1);
             let novelty = Fx::ONE / (Fx::ONE + Fx::from_int(seen as i64) / fx(20.0)).sqrt();
-            let pm = self.assoc.predict_inst(A_MOUTH, &q.cue, ctx);
+            let pm = q.pred[A_MOUTH];
             let relevance = pm[O_NOURISH] * hunger + pm[O_HYDRATE] * thirst;
             // Need-driven search: while a need is unmet, things whose intake
             // outcome is still unknown attract attention.
-            let unknown = Fx::ONE / (Fx::ONE + self.assoc.evidence_for(A_MOUTH, &q.cue));
+            let unknown = Fx::ONE / (Fx::ONE + q.ev[A_MOUTH]);
             let search = hunger.max(thirst) * unknown * (Fx::ONE - q.pav[O_PAIN].muli(3)).clamp01();
             let mut s = q.intensity * fx(0.6) + novelty * fx(0.5) + q.pav_value.abs() * fx(1.2) + relevance + search;
             if self.wm.holds(q.token) {
@@ -419,6 +435,20 @@ impl Mind {
         self.wm.admit(cands, k);
         let attended: Vec<usize> =
             (0..ps.len()).filter(|&i| self.wm.holds(ps[i].token)).collect();
+        for &i in &attended {
+            let q = &mut ps[i];
+            let mouth_mixed = q.pred[A_MOUTH];
+            for a in [A_APPROACH, A_INSPECT, A_TOUCH, A_WITHDRAW] {
+                q.ev[a] = self.assoc.evidence_for(a, &q.cue);
+                q.pred[a] = self.assoc.predict_inst(a, &q.cue, ctx);
+            }
+            let fam = q.pred[A_CONTACT];
+            let w_family = fx(2.0) / (fx(2.0) + q.ev[A_TOUCH]);
+            for o in 0..N_OUT {
+                q.pred[A_TOUCH][o] = q.pred[A_TOUCH][o] * (Fx::ONE - w_family) + fam[o] * w_family;
+            }
+            q.pred[A_MOUTH] = mouth_mixed;
+        }
 
         // Safe exposure to things predicted to hurt (Pavlovian extinction, context-bound).
         if out[O_PAIN].raw() == 0 && f.body.pain < fx(0.2) {
@@ -436,7 +466,7 @@ impl Mind {
         let need = f.body.hunger.max(f.body.thirst);
         let mut known_relief = Fx::ZERO;
         for &i in &attended {
-            let pm = self.assoc.predict_inst(A_MOUTH, &ps[i].cue, ctx);
+            let pm = ps[i].pred[A_MOUTH];
             known_relief = known_relief.max(pm[O_NOURISH] * f.body.hunger + pm[O_HYDRATE] * f.body.thirst);
         }
         self.explore_drive = Fx::ONE + (need - known_relief.muli(2)).max(Fx::ZERO).muli(3);
@@ -532,7 +562,7 @@ impl Mind {
                 3 => fx(0.3),
                 _ => fx(0.1),
             };
-            let pt = self.predict_action(A_TOUCH, &q.cue, ctx)[O_PAIN];
+            let pt = q.pred[A_TOUCH][O_PAIN];
             let threat = q.pav[O_PAIN].max(pt * fx(0.5)) * prox * self.params.fear_gain;
             if threat > fear {
                 fear = threat;
@@ -598,7 +628,7 @@ impl Mind {
         ps: &[PState],
         recalls: &[Recall],
         util: &Out,
-        ctx: usize,
+        _ctx: usize,
         f: &SensoryFrame,
         temp: Fx,
         rng: &mut Rng,
@@ -606,7 +636,7 @@ impl Mind {
     ) -> Opt {
         let q = &ps[i];
         let value = |pred: &Out| (0..N_OUT).fold(Fx::ZERO, |s, o| s + pred[o] * util[o]);
-        let mut pred = self.predict_action(a, &q.cue, ctx);
+        let mut pred = q.pred[a];
         let mut episodic = None;
         if let Some((est, w)) = self.episodic.estimate(recalls, a as u8) {
             let mix = w * fx(0.4);
@@ -624,8 +654,8 @@ impl Mind {
         let mut deliberate = value(&pred) - effort;
         // Lookahead: approaching enables touching/mouthing next.
         if a == A_APPROACH && self.params.planning_depth >= 2 {
-            let vt = value(&self.predict_action(A_TOUCH, &q.cue, ctx));
-            let vm = value(&self.predict_action(A_MOUTH, &q.cue, ctx));
+            let vt = value(&q.pred[A_TOUCH]);
+            let vm = value(&q.pred[A_MOUTH]);
             deliberate += fx(0.8) * vt.max(vm).max(Fx::ZERO);
         }
         // Withdrawing is worth the harm one expects from staying close.
@@ -634,12 +664,12 @@ impl Mind {
             deliberate = q.pav[O_PAIN] * (-util[O_PAIN]) * prox * fx(0.5) - effort;
         }
         // Epistemic value of inspecting: worth it when the outcome of touching is uncertain but could be bad.
-        let ev_touch = self.assoc.evidence_for(A_TOUCH, &q.cue);
+        let ev_touch = q.ev[A_TOUCH];
         let uncertainty = Fx::ONE / (Fx::ONE + ev_touch);
         if a == A_INSPECT {
             // Looking again at the same thing tells less and less (epistemic value habituates).
-            let looked = Fx::ONE / (Fx::ONE + self.assoc.evidence_for(A_INSPECT, &q.cue) / fx(10.0)).sqrt();
-            let risk = self.predict_action(A_TOUCH, &q.cue, ctx)[O_PAIN].max(q.pav[O_PAIN]);
+            let looked = Fx::ONE / (Fx::ONE + q.ev[A_INSPECT] / fx(10.0)).sqrt();
+            let risk = q.pred[A_TOUCH][O_PAIN].max(q.pav[O_PAIN]);
             deliberate += risk * uncertainty * looked * fx(0.5);
         }
         // Habit (model-free cached value for this concept and action).
@@ -666,9 +696,9 @@ impl Mind {
         };
         // Curiosity: only about outcomes my actions could change (touch, mouth, inspect).
         let c = self.params.curiosity;
-        let novelty = |act: usize| Fx::ONE / (Fx::ONE + self.assoc.evidence_for(act, &q.cue)).sqrt();
+        let novelty = |act: usize| Fx::ONE / (Fx::ONE + q.ev[act]).sqrt();
         // Curiosity is discounted by expected harm: creatures do not explore what they fear.
-        let harm = self.predict_action(a, &q.cue, ctx)[O_PAIN].max(q.pav[O_PAIN]);
+        let harm = q.pred[a][O_PAIN].max(q.pav[O_PAIN]);
         let safe = (Fx::ONE - harm.muli(3)).clamp01();
         let curiosity = match a {
             A_TOUCH => c * novelty(a) * fx(0.25) * safe,
@@ -720,6 +750,13 @@ impl Mind {
                     _ => any_out,
                 };
                 if trial {
+                    // Pain felt elsewhere on the body (a bite) is not a consequence of this action.
+                    let site_onset = (f.body.pain_hand - self.prev_body.pain_hand).max(f.body.pain_mouth - self.prev_body.pain_mouth);
+                    let mut out_i = *out;
+                    if out[O_PAIN].is_positive() && site_onset <= out[O_PAIN] * fx(0.5) {
+                        out_i[O_PAIN] = Fx::ZERO;
+                    }
+                    let out = &out_i;
                     if a == A_TOUCH || a == A_MOUTH {
                         self.assoc.learn_instrumental(&self.params, A_CONTACT, &pd.cue, out, ctx, Fx::ONE, &AVERSIVE);
                     }
@@ -794,17 +831,30 @@ impl Mind {
         if any_out {
             // Pavlovian: whatever was in mind when it happened gets some of the credit.
             let mut cues: Vec<(CueVec, Fx)> = Vec::new();
+            let site_onset0 = (f.body.pain_hand - self.prev_body.pain_hand).max(f.body.pain_mouth - self.prev_body.pain_mouth);
+            let localised0 = out[O_PAIN].raw() == 0 || site_onset0 > out[O_PAIN] * fx(0.5);
             if let Some(pd) = &pending {
                 if pd.target.is_some() {
-                    cues.push((pd.cue, Fx::ONE));
+                    cues.push((pd.cue, if localised0 { Fx::ONE } else { fx(0.3) }));
                 }
             }
-            // Bystanders get little credit when I know what I just acted on (causal attribution).
+            // Causal attribution: pain felt where I touched/mouthed something is
+            // blamed on that thing; pain elsewhere on the body (a bite, a blow)
+            // is blamed on nearby things, the closest most.
             let acted = pending.as_ref().and_then(|p| p.target).is_some();
-            let bystander = if acted { fx(0.05) } else { fx(0.2) };
+            let site_onset = (f.body.pain_hand - self.prev_body.pain_hand).max(f.body.pain_mouth - self.prev_body.pain_mouth);
+            let localised = out[O_PAIN].raw() == 0 || site_onset > out[O_PAIN] * fx(0.5);
             for q in ps {
-                if self.wm.holds(q.token) && Some(q.token) != pending.as_ref().and_then(|p| p.target) {
-                    cues.push((q.cue, bystander));
+                if Some(q.token) == pending.as_ref().and_then(|p| p.target) {
+                    continue;
+                }
+                let e = if localised {
+                    if acted { fx(0.05) } else { fx(0.2) }
+                } else {
+                    fx(0.6) / Fx::from_int(1 + q.dist as i64)
+                };
+                if self.wm.holds(q.token) || (!localised && q.dist <= 2) {
+                    cues.push((q.cue, e));
                 }
             }
             if !cues.is_empty() {
@@ -1193,6 +1243,76 @@ impl Mind {
                 )
             })
             .collect()
+    }
+
+    /// Being told something by another person (or seeing their warning).
+    /// The claim is about a sense unit (shared, innate vocabulary); concepts are
+    /// private and cannot be told. Told associations are capped until confirmed
+    /// by own experience (01 rule 10) and recorded as beliefs with their source.
+    pub fn receive_told(&mut self, cue: u16, outcome: u8, strength: Fx, trust: Fx, from: u32, tick: u64) -> bool {
+        let (c, o) = (cue as usize, outcome as usize);
+        if c >= N_SENSE || o >= N_OUT {
+            return false;
+        }
+        let cap = fx(0.6);
+        let add = (strength * trust * fx(0.5)).clamp(Fx::ZERO, cap);
+        let cur = self.assoc.pav_fast[c][o] + self.assoc.pav_slow[c][o];
+        if cur >= cap || add < fx(0.02) {
+            return false;
+        }
+        self.assoc.pav_fast[c][o] = (self.assoc.pav_fast[c][o] + add).min(cap);
+        let conf = (strength * trust).clamp01();
+        if let Some(b) = self.semantic.beliefs.iter_mut().find(|b| {
+            b.cue == cue && b.outcome == outcome && b.action.is_none() && matches!(b.source, memory::semantic::Source::Told { .. })
+        }) {
+            b.confidence = b.confidence.max(conf);
+            b.evidence = b.evidence.saturating_add(1);
+            b.t_updated = tick;
+            return false; // already known from someone: reinforced, not news
+        } else if self.semantic.beliefs.len() < memory::semantic::MAX_BELIEFS {
+            let id = self.semantic.next_id;
+            self.semantic.next_id += 1;
+            self.semantic.beliefs.push(memory::semantic::Belief {
+                id,
+                cue,
+                action: None,
+                outcome,
+                strength: add,
+                confidence: conf,
+                evidence: 1,
+                source: memory::semantic::Source::Told { who: from },
+                evidence_episodes: Vec::new(),
+                t_learned: tick,
+                t_updated: tick,
+            });
+        }
+        true
+    }
+
+    /// Strongest explicit belief this mind could tell others (sense-unit based).
+    pub fn tellable_belief(&self) -> Option<(u16, u8, Fx)> {
+        self.semantic
+            .beliefs
+            .iter()
+            .filter(|b| (b.cue as usize) < N_SENSE && b.confidence > fx(0.2))
+            .max_by(|a, b| a.confidence.cmp(&b.confidence).then(b.id.cmp(&a.id)))
+            .map(|b| (b.cue, b.outcome, b.confidence))
+            .or_else(|| {
+                // No crystallised belief yet: share the strongest pain association, if any.
+                let mut best: Option<(u16, u8, Fx)> = None;
+                for c in 0..N_SENSE {
+                    let w = self.assoc.pav_fast[c][O_PAIN] + self.assoc.pav_slow[c][O_PAIN];
+                    if w > fx(0.08) && best.map_or(true, |b| w > b.2) {
+                        best = Some((c as u16, O_PAIN as u8, w));
+                    }
+                }
+                best
+            })
+    }
+
+    /// Public label for a cue index (for inspectors).
+    pub fn cue_name(&self, c: usize) -> String {
+        self.cue_label(c)
     }
 
     /// Approximate memory footprint of this mind, in bytes.

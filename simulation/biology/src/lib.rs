@@ -59,6 +59,15 @@ pub struct Body {
     pub radiant_mouth: Fx,
     pub sleep_pressure: Fx,
     pub asleep: bool,
+    /// General wounds (bites, blows, lightning), 0..1; heals like burns.
+    pub damage_body: Fx,
+    /// Acute nociception from a fresh wound or cut (decays within seconds).
+    pub noci_wound: Fx,
+    pub noci_cut_hand: Fx,
+    /// Air temperature around the body (set by the world each step).
+    pub ambient_c: Fx,
+    /// Core thermal state: -1 freezing .. 0 comfortable .. +1 overheated.
+    pub thermal: Fx,
     /// Contact sites touched this tick (reset each step).
     pub contact_hand: bool,
     pub contact_mouth: bool,
@@ -103,6 +112,11 @@ impl Body {
             radiant_mouth: Fx::ZERO,
             sleep_pressure: fx(0.25),
             asleep: false,
+            damage_body: Fx::ZERO,
+            noci_wound: Fx::ZERO,
+            noci_cut_hand: Fx::ZERO,
+            ambient_c: fx(20.0),
+            thermal: Fx::ZERO,
             contact_hand: false,
             contact_mouth: false,
             signals: BodySignals::default(),
@@ -136,6 +150,18 @@ impl Body {
     /// Radiant heat reaching the skin this tick (0..1 sensation scale).
     pub fn add_radiant(&mut self, flux: Fx) {
         self.radiant += flux;
+    }
+
+    /// A wound (bite, blow, lightning).
+    pub fn wound(&mut self, amount: Fx) {
+        self.damage_body = (self.damage_body + amount).clamp01();
+        self.noci_wound = self.noci_wound.max((amount * fx(4.0)).clamp01());
+    }
+
+    /// A cut on the hand (sharp edge).
+    pub fn cut_hand(&mut self, amount: Fx) {
+        self.damage_hand = (self.damage_hand + amount).clamp01();
+        self.noci_cut_hand = self.noci_cut_hand.max((amount * fx(6.0)).clamp01());
     }
 
     /// Radiant heat on one site only (hand or face held close to a surface).
@@ -182,6 +208,12 @@ impl Body {
         let heal = Fx::decay(Fx::ONE, k::heal_tau_s());
         self.damage_hand = (self.damage_hand * heal + burn(self.skin_hand)).clamp01();
         self.damage_mouth = (self.damage_mouth * heal + burn(self.skin_mouth)).clamp01();
+        self.damage_body = (self.damage_body * heal).clamp01();
+        // Core thermal state follows felt temperature (air + radiant heat) slowly.
+        let felt = self.ambient_c + self.radiant.clamp01() * fx(30.0);
+        let target = ((felt - fx(20.0)) / fx(14.0)).clamp(Fx::NEG_ONE, Fx::ONE);
+        let rate = if self.asleep { fx(0.0008) } else { fx(0.0015) };
+        self.thermal += (target - self.thermal) * rate;
 
         // Sleep pressure (Borbély process S) and sleep state.
         if self.asleep {
@@ -198,6 +230,8 @@ impl Body {
         }
 
         self.signals = self.compute_signals();
+        self.noci_wound = self.noci_wound * fx(0.5);
+        self.noci_cut_hand = self.noci_cut_hand * fx(0.5);
         self.radiant = Fx::ZERO;
         self.radiant_hand = Fx::ZERO;
         self.radiant_mouth = Fx::ZERO;
@@ -208,11 +242,11 @@ impl Body {
     fn compute_signals(&self) -> BodySignals {
         let hunger = ((k::energy_setpoint() - self.energy - self.stomach_kcal) / k::hunger_span()).clamp01();
         let thirst = ((k::water_setpoint() - self.water - self.stomach_water) / k::thirst_span()).clamp01();
-        let noci_hand = noci(self.skin_hand);
+        let noci_hand = noci(self.skin_hand).max(self.noci_cut_hand);
         let noci_mouth = noci(self.skin_mouth);
         let pain_hand = combine(noci_hand, self.damage_hand * fx(0.7));
         let pain_mouth = combine(noci_mouth, self.damage_mouth * fx(0.7));
-        let pain = combine(pain_hand, pain_mouth);
+        let pain = combine(combine(pain_hand, pain_mouth), (self.damage_body * fx(0.8)).max(self.noci_wound));
         let fullness = (self.stomach_kcal / fx(150.0) + self.stomach_water / fx(400.0)).clamp01();
         BodySignals {
             hunger,
@@ -224,8 +258,8 @@ impl Body {
             gut_nutrient: (self.stomach_kcal / fx(150.0)).clamp01(),
             gut_fluid: (self.stomach_water / fx(400.0)).clamp01(),
             fatigue: self.sleep_pressure,
-            acute_pain: noci_hand.max(noci_mouth),
-            body_heat: (self.radiant * fx(1.5) - fx(0.1)).clamp(Fx::NEG_ONE, Fx::ONE),
+            acute_pain: noci_hand.max(noci_mouth).max(self.noci_wound),
+            body_heat: self.thermal,
             reflex_hand: noci_hand > k::reflex_threshold(),
             reflex_mouth: noci_mouth > k::reflex_threshold(),
         }
@@ -267,6 +301,8 @@ impl StableHash for Body {
         self.damage_mouth.stable_hash(h);
         self.sleep_pressure.stable_hash(h);
         self.asleep.stable_hash(h);
+        self.damage_body.stable_hash(h);
+        self.thermal.stable_hash(h);
     }
 }
 
