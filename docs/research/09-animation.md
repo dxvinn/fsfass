@@ -308,3 +308,152 @@ used to train ML models), and purchased/commissioned packs.
 - Integrate? no (watch-list).
 - Risks: Immature, skeleton mismatch, licences.
 
+---
+
+## Part D — 2D animation (skeletal, paper-doll, procedural pixel art, AI sprites, portraits)
+
+### Spine (Esoteric Software) — commercial 2D skeletal animation
+- URL: https://en.esotericsoftware.com/spine-runtimes ; runtimes https://github.com/EsotericSoftware/spine-runtimes ; editor licence https://en.esotericsoftware.com/spine-editor-license
+- License: **Commercial.** Runtimes' source is public but may only be integrated into products if you held a valid Spine Editor licence at integration time; distribution continues after expiry. Organisations with >US$500k revenue/funding need Spine Enterprise. Runtime licence text must ship with the product. (verified via official pages/blog)
+- Type: Editor (Java) + runtimes for C/C++, C#, Unity, Unreal, Godot (spine-godot), TS/WebGL, PixiJS (pixi-spine/spine-pixi), Three.js, Phaser, etc.
+- Activity: Very active, industry standard.
+- How it works: Bones + mesh deformation + weights + IK constraints + path constraints + skins (swap attachments per skin); runtime can set bone transforms each frame, so procedural control (look-at, lean, limp offsets) is easy; skin combining at runtime supports paper-doll outfits.
+- Runtime cost: CPU skinning per character; hundreds on screen fine; thousands need baking to sprite sheets or GPU instancing.
+- What it would do: High-quality 2D/2.5D humans and animals with genetic variation via bone scale (height, build) and skin combinations (hair, clothes, wounds).
+- Integrate? maybe — best-in-class tooling for 2D; cost is modest (one-off seats) but adds a licence dependency.
+- Risks: Licence ties; revenue threshold.
+
+### DragonBones (runtime) / LoongBones
+- URL: https://github.com/DragonBones/DragonBonesJS
+- License: MIT runtime (verified), ~851 stars. Editor historically free (Egret); maintainers now point to "LoongBones" for authoring (*status unverified*).
+- Type: TS/JS runtimes for PixiJS, Phaser, Egret, Cocos; C++/C# runtimes exist in sibling repos.
+- How it works: Spine-like bones, meshes, FFD; JSON format.
+- Integrate? maybe (budget OSS alternative for web/PixiJS); tooling ecosystem is weaker and partly Chinese-language.
+- Risks: Long-term maintenance uncertain.
+
+### Godot Skeleton2D / Unity 2D Animation (engine-native 2D skeletal)
+- URL: Godot docs (Skeleton2D, Bone2D, Polygon2D skinning, SkeletonModification2D: FABRIK/CCD/LookAt/TwoBoneIK/Jiggle); Unity 2D Animation package (Sprite Skin, Sprite Library/Resolver for swappable parts, 2D IK).
+- License: Godot MIT; Unity package under Unity Companion License (usable with Unity only).
+- How it works: Bone hierarchy deforming sprite meshes; Unity's Sprite Library/Category/Label system swaps parts per character (ideal for genes: "nose_3", "ears_wolf"); Godot 2D modifiers provide procedural IK and jiggle.
+- Runtime cost: CPU skinning; hundreds per frame; bake for crowds.
+- What it would do: OSS path for 2D skeletal with procedural control without Spine fees.
+- Integrate? yes if we choose Godot/Unity 2D.
+- Risks: Godot 2D modification stack has historically been less polished than 3D (*varies by version*).
+
+### Universal LPC Spritesheet Character Generator (Liberated Pixel Cup)
+- URL: https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator (old fork sanderfrenken/… now redirects)
+- License: Code GPL-3.0; **art is per-asset mixed: CC0, CC-BY, OGA-BY, CC-BY-SA (3.0/4.0), GPL-3.0**; attribution mandatory for non-CC0; tool exports a credits CSV per image. ~1.8k stars. (verified)
+- Type: Web tool (JS) + layered PNG sprite sheets (64×64 frames), 4 directions.
+- How it works: Layered paper-doll: body base (male/female adult; LPC Expanded adds child and elderly — incomplete coverage), then head, hair, clothes, weapons layers, each a full sprite sheet aligned to the same frame grid; animations: walk, spellcast, slash, thrust, shoot, hurt, plus bow, climb, run, jump, sit, etc. in expanded sets.
+- Runtime cost: Pre-composite per individual into one atlas (or composite in shader) → extremely cheap; thousands of sprites trivial.
+- What it would do: Instant prototype art for top-down humans with huge combinatorial variety.
+- Integrate? maybe — for **prototype only**, or for ship if we filter to CC0/CC-BY/OGA-BY layers. **CC-BY-SA layers**: derivative art must be shared alike (our composited sprites become CC-BY-SA — acceptable for art files but contaminates any art combined with them, and DRM/"effective technological measures" clauses in CC-BY-SA 3.0 are debated). **GPL-3.0 art layers**: avoid in a closed game.
+- Risks: Licence hygiene per layer; generic look; 64-px RPG style may not fit.
+
+### Procedural pixel-art / sprite animation (rotsprite, palette swaps, sub-pixel squash)
+- URL: references — rotsprite algorithm (Xenowhirl, public description), "Dead Cells 3D→2D pipeline" (Motion Twin, GDC/Game Developer article 2018 "Art Design Deep Dive: Using a 3D pipeline for 2D animation in Dead Cells" — *not fetched*).
+- License: Technique.
+- How it works: (a) Render low-poly 3D models to low-res pixel sprites without anti-aliasing with toon shading (Dead Cells approach) → all animation done in 3D, output looks hand-pixelled; (b) procedural modifiers on sprites: squash-stretch, bob, palette swap for genes (skin/fur/eye colour), overlay layers for wounds/age (grey hair, wrinkles).
+- Runtime cost: Baked → negligible.
+- What it would do: Lets us keep a 3D skeletal + procedural pipeline (genetic proportions, limp) while shipping a 2D pixel look: render each *archetype × body-type bin × action × direction* to an atlas offline, or render live at low res for the followed person.
+- Integrate? yes (strong option to bridge art directions).
+- Risks: Atlas memory explosion with combinatorics → limit bins, composite layers at runtime.
+
+### AI sprite-sheet generation: PixelLab (commercial SaaS) and similar
+- URL: https://www.pixellab.ai/docs/options/character
+- License: Commercial service; terms (per review sites, *not read first-hand*) permit commercial use of outputs and forbid using outputs to train other models; user responsible for third-party rights.
+- How it works: Text/image → pixel character; skeleton-based posing and text-driven animation; 4/8-direction rotation incl. isometric.
+- What it would do: Speed up concepting and sprite variants (species, clothing) — then cleaned by an artist.
+- Integrate? maybe (offline tool).
+- Risks: Consistency across frames; vendor lock-in; ToS changes; copyright status of AI outputs (limited protectability in the US for purely AI output).
+
+### AnimateDiff
+- URL: https://github.com/guoyww/AnimateDiff
+- License: Apache-2.0 code (verified, ~12.3k stars, v3 Dec 2023). Base model weights carry their own licences (SD1.5 = CreativeML OpenRAIL-M; SDXL = OpenRAIL++).
+- How it works: A motion module inserted into a frozen text-to-image UNet adds temporal attention; any SD1.5 fine-tune (e.g. a pixel-art LoRA) can then generate short loops.
+- What it would do: Idle/ambient loops (fire, banners, fur ruffle) and concept animation; poor at consistent sprite sheets.
+- Integrate? maybe (offline, artist-in-the-loop).
+- Risks: Temporal flicker; OpenRAIL use-restrictions are behavioural (OK for games).
+
+### Wan 2.2 (Alibaba) — open video generation incl. Wan-Animate
+- URL: https://github.com/Wan-Video/Wan2.2
+- License: Apache-2.0 for code and weights (verified), ~17.7k stars; released July–Sept 2025; models TI2V-5B (720p, runs on a single consumer GPU), I2V/T2V-A14B (MoE), **Animate-14B** (character animation/replacement driven by a reference video), S2V-14B.
+- How it works: Diffusion transformer video models; Animate-14B transfers motion from a driving video onto a reference character image.
+- What it would do: Offline: take a character portrait or sprite + a reference motion video → frames → downscale/quantise to sprite sheet; or generate VFX loops (smoke, water, fire). The most permissively licensed strong video model as of late 2026 (newer versions may exist — *check Wan 2.5+/3 licences, some later Wan releases were API-only*).
+- Integrate? maybe (offline asset pipeline).
+- Risks: Heavy GPU; frame consistency at small sprite sizes; must post-process heavily.
+
+### Stable Video Diffusion (Stability AI)
+- URL: https://stability.ai/license
+- License: Stability AI Community License — commercial use free under US$1M annual revenue; Enterprise licence above (verified on licence page/secondary).
+- Integrate? no (Wan 2.2 is more permissive and stronger).
+- Risks: Revenue threshold.
+
+### Meta AnimatedDrawings
+- URL: https://github.com/facebookresearch/AnimatedDrawings
+- License: MIT (verified), ~12.8k stars; **archived Sept 3, 2025**.
+- How it works: Detect + segment a drawn humanoid, predict joints, build an ARAP mesh rig, retarget BVH motion onto the 2D rig.
+- What it would do: Proof-of-concept for "player/god draws a creature, it walks"; also a recipe for auto-rigging 2D art.
+- Integrate? maybe (fork for an in-game "drawn idol/totem comes alive" feature or tooling).
+- Risks: Unmaintained; humanoid-only.
+
+### Inochi2D — open Live2D alternative
+- URL: https://github.com/Inochi2D/inochi2d
+- License: BSD-2-Clause (verified), ~1.8k stars; D language with C FFI, official Unity binding, Godot GDExtension binding, WebAssembly/JS. Actively developed (editor "Inochi Creator" still in development).
+- How it works: Layered 2D art with mesh deformation, parameters (e.g. head angle X/Y, mouth open, eye open, brow) that blend deformations; physics for hair.
+- Runtime cost: One puppet = a few meshes; fine for a handful of portraits on screen, not crowds.
+- What it would do: **Character portraits/inspection panel** with expressions driven by the agent's emotion state (fear, grief, joy), blinking, breathing, lip flaps during dialogue.
+- Integrate? yes (portrait UI).
+- Risks: Tooling maturity; D toolchain in build.
+
+### Live2D Cubism (commercial reference)
+- URL: https://www.live2d.com/en/sdk/license/
+- License: Proprietary; free SDK release for "General Users/Small-Scale Enterprises" with <¥10M annual sales; above that a publication licence (running-royalty plan for games). (verified via Live2D help)
+- Integrate? maybe — industry-standard tooling; licence becomes paid once revenue grows. Inochi2D preferred for openness.
+- Risks: Fees, proprietary format.
+
+---
+
+## Part E — Facial / emotional animation and lip-sync
+
+### FACS-based blendshape rigs (ARKit 52 standard) driven by appraisal emotion
+- URL: FACS (Ekman & Friesen); ARKit blendshape list (Apple developer docs `ARFaceAnchor.BlendShapeLocation`) — *docs not fetched*.
+- License: Concept; ARKit names are a de-facto standard used by many tools (VRM, Audio2Face, Unreal Live Link).
+- How it works: Faces get ~52 blendshapes (browInnerUp, eyeSquintLeft, mouthSmileLeft, jawOpen…). An emotion layer maps sim emotion (e.g. PAD: pleasure/arousal/dominance, or discrete appraisal outputs: joy, distress, fear, anger, grief, disgust, surprise, pride, shame) to Action Unit weights — e.g. sadness ≈ AU1+AU4+AU15; fear ≈ AU1+2+4+5+20+26; joy ≈ AU6+12 — then AUs → blendshapes. Add noise/blinks/saccades and intensity decay.
+- Runtime cost: Blendshapes on GPU; only meaningful at LOD0–1 (faces invisible beyond that).
+- What it would do: Read a person's inner state when the god zooms in; also drives portrait (Inochi2D parameters) and sprite face overlays (2D: swap eyes/mouth/brow sprites by emotion).
+- Integrate? yes (data table: emotion → AU weights → blendshape/sprite).
+- Risks: Uncanny valley in realistic 3D — stylised faces strongly recommended.
+
+### NVIDIA Audio2Face-3D (open-sourced Sept 2025)
+- URL: https://github.com/NVIDIA/Audio2Face-3D ; SDK https://github.com/NVIDIA/Audio2Face-3D-SDK ; weights e.g. https://huggingface.co/nvidia/Audio2Face-3D-v3.0
+- License: SDK MIT; training framework Apache; Maya/UE5 plugins MIT; **models (v2.3 regression, v3.0 diffusion) under NVIDIA Open Model License; Audio2Emotion models: custom licence, "use allowed with Audio2Face only"**; sample training data evaluation-only. (verified, ~459 stars on the collection repo)
+- Type: C++/CUDA SDK (TensorRT), Python training.
+- How it works: Audio → network → facial mesh deformation / blendshape weights (ARKit-style), tongue, jaw, eyes; Audio2Emotion infers emotion from voice to modulate.
+- Runtime cost: GPU inference per speaking character; real time for a few.
+- What it would do: Only relevant if our agents *speak audibly* (TTS from LLM dialogue). Then the followed person's face lip-syncs and emotes.
+- Integrate? maybe (LOD0, optional, NVIDIA GPU dependence of SDK — *CPU/other-GPU paths unverified*).
+- Risks: CUDA/NVIDIA-only runtime; the game probably uses text/simlish rather than voice.
+
+### Rhubarb Lip Sync
+- URL: https://github.com/DanielSWolf/rhubarb-lip-sync
+- License: MIT (verified), ~2.6k stars.
+- How it works: Offline CLI: audio (+ optional transcript) → timed mouth shapes A–F (+ G, H, X) in Hanna-Barbera style; PocketSphinx for English, phonetic recogniser for other languages.
+- Runtime cost: Offline; output is tiny cue lists.
+- What it would do: Perfect for 2D/stylised characters speaking pre-generated "simlish" barks or TTS lines; can also run on generated TTS at load time.
+- Integrate? yes (2D/2.5D stylised).
+- Risks: Offline speed (seconds per clip); unmaintained-ish (*last release date not verified*).
+
+### uLipSync (Unity)
+- URL: https://github.com/hecomi/uLipSync
+- License: MIT (verified), ~1.7k stars.
+- How it works: Real-time MFCC analysis of the audio buffer compared with calibrated vowel profiles (a/i/u/e/o) → blendshape weights; Job System + Burst; bakeable.
+- Integrate? yes if Unity + voice; the MFCC idea ports to any engine.
+- Risks: Vowel-only (Japanese-centric) visemes.
+
+### Gibberish/"simlish" voice + procedural mouth flaps (no-audio-analysis approach)
+- URL: technique (The Sims, Animal Crossing "Animalese") — no single source.
+- How it works: The dialogue system emits syllable timing with the generated text; mouth opens per syllable, amplitude by emotion arousal.
+- Runtime cost: Negligible; works for hundreds of speaking agents.
+- Integrate? yes — the default for crowds of chatting villagers.
+

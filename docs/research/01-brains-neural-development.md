@@ -786,3 +786,59 @@ blocking, extinction and renewal like a spiking amygdala does?"), not for runnin
 - What we should NOT integrate: the robot stack.
 - Scalability: N/A.
 
+## 6. Already-known systems: only the specific mechanisms worth stealing
+
+(Not re-reviewed; listed because a concrete mechanism slots into the proposal below.)
+
+- **ACT-R base-level learning** — activation of a memory chunk B = ln(Σ_j t_j^(−d)), d≈0.5, over the ages
+  t_j of past uses. One formula gives the power law of forgetting *and* the spacing effect. We use a cheap
+  approximation (stored count + last-use tick) for edge/episode retrieval and pruning priority.
+- **Soar chunking** — compile a successful deliberate reasoning chain into a single production. Our analogue:
+  a model-based plan that succeeds repeatedly is cached as a model-free habit entry (habitisation).
+- **LIDA / GWT** — codelets form coalitions that compete for the workspace; the winner is broadcast and
+  becomes eligible for learning. Our K-slot workspace is this, minus the codelet machinery.
+- **Leabra / PVLV (emergent)** — Pavlovian learning split into a "primary value" system (learns at the US)
+  and a "learned value" system (fires at CSs) with dopamine combining them; justifies keeping Pavlovian value
+  separate from instrumental value.
+- **Spaun / Nengo BG** — action selection as a basal-ganglia winner-take-all over "utility" of production
+  rules; same as our selector.
+- **Generative agents (Park et al. 2023)** — memory retrieval score = recency + importance + relevance, plus
+  periodic "reflection". For our LOD0 agents, importance = |prediction error| × |valence| from the sim (no LLM
+  needed to score importance), and reflection = sleep consolidation + rule crystallisation.
+- **pymdp / active inference** — expected free energy = pragmatic + epistemic value; we approximate the
+  epistemic term with uncertainty/novelty bonuses.
+- **Thousand Brains / Monty** — many parallel "columns" voting on object identity; inspiration for
+  generalisation by feature-signature similarity, not adopted directly.
+
+## 7. Summary comparison
+
+| Candidate | Licence (risk for closed game) | Runtime per creature? | Main contribution to us |
+|---|---|---|---|
+| Brian2 / NEST / GeNN / BindsNET / snnTorch / Norse | CeCILL / GPL / LGPL / AGPL / MIT / LGPL | No (offline validation) | trace-based STDP, distal-reward eligibility, batched kernels |
+| Creatures Norn brain (openc2e) | LGPL engine; ideas free | Yes, in sparse form | susceptibility × reward chemical; STW/LTW; instincts as pre-training |
+| Rescorla–Wagner / Pearce–Hall (statsrat) | MIT / science | Yes | core cue→outcome rule, blocking, adaptive attention |
+| TD / dopamine RPE | science | Yes | temporal credit assignment, second-order fear |
+| Spiking amygdala (Nengo) | Nengo GPL-2 (check) | No | fear vs context-gated extinction → renewal |
+| Modern Hopfield | BSD | LOD0/1 episodic recall | pattern completion, β as sharpness knob |
+| SDM / torchhd VSA | unverified / MIT | summaries only | similarity-based generalisation, compact belief vectors |
+| HTM | AGPL | No | bursting = surprise; permanence thresholds |
+| Episodic control | MIT | LOD0/1 | one-shot "what worked last time" |
+| Successor representation / RatInABox | MIT | LOD0/1 (sparse) | predictive maps, latent learning |
+| GPR basal ganglia | unverified | Yes (tiny) | persistence/hysteresis, tonic dopamine vigour |
+| MB/MF arbitration | science | Yes | habit vs deliberation switch; LOD knob |
+| pyhgf (HGF) | MIT | Yes (few beliefs) | volatility-adaptive learning rate |
+| Predictive coding / RxInfer / ActiveInference.jl | unverified / MIT / MIT | No | prediction-error gating; EFE decomposition |
+| Shimmer (GWT) | MIT | idea | K-slot salience workspace |
+| PsyNeuLink | Apache-2.0 | equations | DDM/LCA hesitation; expected value of control |
+| pyClarion | MIT | idea | rule extraction → explicit, teachable beliefs; drives |
+| MicroPsi2 | MIT | Yes (scalars) | emotions as modulators of cognition |
+| ICM / RND | MIT / unverified | count proxies | controllable-novelty curiosity |
+| Explauto (IAC/R-IAC) | GPL-3 | algorithm | learning-progress curiosity, self-organised stages |
+| ALP-GMM / MAGELLAN | MIT | ALP yes; MAGELLAN LOD0 | absolute LP (incl. forgetting); LLM self-goals |
+| Empowerment | science | proxies | keep-options-open drive |
+| Drescher schema mechanism | unverified | bounded | marginal attribution, synthetic items (hidden causes) |
+| ToMnet / Plinf (BToM) | MIT / unverified | tiny Bayesian version | trait + mental-state models; goal inference |
+| EGG / Babel2 naming game | MIT / Apache-2.0 | Yes | lexicon as graph nodes; dialect drift |
+| Minigrid / BabyAI | MIT | No (test harness) | offline testbed; warning on neural language learning |
+| iCub / ERA | GPL-2/BSD | idea | Hebbian hub binding, A-not-B |
+
