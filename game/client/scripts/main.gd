@@ -59,6 +59,7 @@ var shot_path := ""
 var shot_frames := -1
 var auto_select := false
 var shot_tab := -1
+var shot_saveload := false
 var warp_days := 0.0
 var shot_gods: PackedStringArray = []
 var shot_click := Vector2(-1, -1)
@@ -118,6 +119,8 @@ func _parse_args() -> void:
 			shot_click = Vector2(float(xy[0]), float(xy[1]))
 		elif a.begins_with("--warp-days="):
 			warp_days = float(a.substr(12))
+		elif a == "--saveload":
+			shot_saveload = true
 		elif a == "--select":
 			auto_select = true
 
@@ -190,6 +193,13 @@ func _build_hud() -> void:
 	hist_btn.button_pressed = true
 	hist_btn.toggled.connect(func(on): history_panel.visible = on)
 	tb.add_child(hist_btn)
+	var save_btn := UI.button("Save", "Save this world (F5)")
+	save_btn.pressed.connect(_save_world)
+	tb.add_child(save_btn)
+	var load_btn := UI.button("Load", "Load a saved world (F9)")
+	load_btn.pressed.connect(_show_load_menu)
+	tb.add_child(load_btn)
+	_build_load_ui(root)
 
 	# God toolbar (left).
 	var tools := PanelContainer.new()
@@ -308,6 +318,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F:
 				if selected >= 0:
 					_set_follow(not cam.following)
+			KEY_F5:
+				_save_world()
+			KEY_F9:
+				_show_load_menu()
 			KEY_H:
 				history_panel.visible = not history_panel.visible
 			KEY_ESCAPE:
@@ -420,6 +434,13 @@ func _toast(text: String, col := UI.TEXT) -> void:
 
 func _process(delta: float) -> void:
 	if world == null:
+		return
+	if world.is_loading():
+		var p: float = world.load_step(30.0)
+		load_bar.value = p
+		load_label.text = "Rebuilding the world from its journal… %d%%" % roundi(p * 100.0)
+		if p >= 1.0:
+			_finish_load()
 		return
 	var budget := 12.0 if SPEEDS[speed_idx] < 1000 else 22.0
 	world.advance(delta, SPEEDS[speed_idx], budget)
@@ -554,6 +575,12 @@ func _screenshot_hook() -> void:
 			var c := cam.get_screen_center_position()
 			var off := Vector2((k % 3 - 1) * 60, (k / 3 - 1) * 50)
 			_use_power(shot_gods[k], Vector2i(floori((c.x + off.x) / view.TILE), floori((c.y + off.y) / view.TILE)))
+	if shot_saveload and f == 40:
+		_save_world()
+		var d := DirAccess.open(SAVE_DIR)
+		var files := Array(d.get_files())
+		files.sort()
+		_load_file("%s/%s" % [SAVE_DIR, files[-1]])
 	if shot_click.x >= 0 and f == 25:
 		# Drive the real input path: a left click at a screen position.
 		var ev := InputEventMouseButton.new()
@@ -565,8 +592,103 @@ func _screenshot_hook() -> void:
 		Input.parse_input_event(ev)
 	if shot_tab >= 0 and f == 22:
 		inspector.select_tab(shot_tab)
-	if f == shot_frames:
+	if f >= shot_frames:
+		shot_frames = 1 << 30
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(shot_path)
 		print("saved screenshot ", shot_path)
 		get_tree().quit()
+
+
+# ---------------------------------------------------------------- save / load
+
+const SAVE_DIR := "user://saves"
+var load_menu: PanelContainer
+var load_list: VBoxContainer
+var load_overlay: PanelContainer
+var load_bar: ProgressBar
+var load_label: Label
+
+
+func _build_load_ui(root: Control) -> void:
+	load_menu = UI.card("Load a world")
+	load_menu.set_anchors_preset(Control.PRESET_CENTER)
+	load_menu.custom_minimum_size = Vector2(420, 0)
+	load_menu.visible = false
+	root.add_child(load_menu)
+	var body := UI.card_body(load_menu)
+	load_list = VBoxContainer.new()
+	load_list.add_theme_constant_override("separation", 4)
+	body.add_child(load_list)
+	var cancel := UI.button("Cancel")
+	cancel.pressed.connect(func(): load_menu.visible = false)
+	body.add_child(cancel)
+	load_overlay = UI.card("Loading")
+	load_overlay.set_anchors_preset(Control.PRESET_CENTER)
+	load_overlay.custom_minimum_size = Vector2(460, 0)
+	load_overlay.visible = false
+	root.add_child(load_overlay)
+	var ob := UI.card_body(load_overlay)
+	load_label = UI.label("", 13, UI.TEXT, true)
+	ob.add_child(load_label)
+	load_bar = ProgressBar.new()
+	load_bar.max_value = 1.0
+	load_bar.show_percentage = false
+	load_bar.custom_minimum_size = Vector2(400, 12)
+	ob.add_child(load_bar)
+	ob.add_child(UI.label("A save stores the world's seed and every act of God, so loading replays history exactly.", 11, UI.MUTED, true))
+
+
+func _save_world() -> void:
+	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
+	var s = JSON.parse_string(world.status())
+	var name := "%s/%s.gsave" % [SAVE_DIR, Time.get_datetime_string_from_system().replace(":", "-")]
+	var f := FileAccess.open(name, FileAccess.WRITE)
+	if f == null:
+		_toast("Could not save: %s" % error_string(FileAccess.get_open_error()), UI.BAD)
+		return
+	f.store_string(world.save_text())
+	f.close()
+	_toast("Saved (%s, year %d)" % [s.clock if s is Dictionary else "", int(s.year) if s is Dictionary else 0], UI.GOOD)
+
+
+func _show_load_menu() -> void:
+	UI.clear(load_list)
+	var files := []
+	var d := DirAccess.open(SAVE_DIR)
+	if d:
+		for f in d.get_files():
+			if f.ends_with(".gsave"):
+				files.append(f)
+	files.sort()
+	files.reverse()
+	if files.is_empty():
+		load_list.add_child(UI.label("No saved worlds yet. Press Save (F5) first.", 13, UI.MUTED, true))
+	for f in files.slice(0, 12):
+		var b := UI.button(f.trim_suffix(".gsave").replace("T", "  "))
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.pressed.connect(_load_file.bind("%s/%s" % [SAVE_DIR, f]))
+		load_list.add_child(b)
+	load_menu.visible = true
+
+
+func _load_file(path: String) -> void:
+	load_menu.visible = false
+	var text := FileAccess.get_file_as_string(path)
+	if not world.begin_load(text):
+		_toast("Could not load: %s" % world.load_status(), UI.BAD)
+		return
+	_select(-1)
+	load_overlay.visible = true
+
+
+func _finish_load() -> void:
+	load_overlay.visible = false
+	view.refresh_terrain()
+	view.draw_pos.clear()
+	UI.clear(history_box)
+	history_count = 0
+	_set_speed(0)
+	_focus_on_humans()
+	var ok: bool = world.load_status().begins_with("Loaded. ")
+	_toast(world.load_status(), UI.GOOD if ok else UI.BAD)

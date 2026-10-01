@@ -2,14 +2,14 @@
 TIME day 3 00:00:00   (tick 172800, context X0)
 
 PERCEPTION
-  thing#9cc7 at 5m: still, smooth, round, medium, hue:red, lit>0.2  -> concept C1 (match 1.00)
+  thing#9cc7 at 5m: still, smooth, round, medium, hue:red, lit>0.2  -> concept C1 (match 1.00)   gut: pain 0.02 value +0.37
 
 NEEDS
   hunger 0.50   thirst 0.20   pain 0.00   fatigue 0.25
 
 ATTENTION (workspace)
-  1. thing#9cc7 (C1): still, smooth, round   salience 0.96
-  2. memory: episode #17   salience 0.55
+  1. thing#9cc7 (C1): still, smooth, round   salience 1.00
+  2. memory: episode #10   salience 0.60
   3. need: hunger   salience 0.50
   4. need: thirst   salience 0.20
 
@@ -18,71 +18,71 @@ WORKING MEMORY
   workspace capacity: 4 items
 
 MEMORIES ACTIVATED
-  episode #17 (5h ago): mouth C1 [still, medium, round, smooth, lit>0.2] felt swallowed+sweet -> water-intake 0.12   activation 3.32
-  episode #18 (5h ago): mouth C1 [still, round, medium, smooth, hue:red] felt swallowed+sweet -> water-intake 0.12   activation 3.30
+  episode #10 (27h ago): mouth C1 [still, round, smooth, medium, lit>0.2] felt swallowed+sweet -> nutrient-intake 0.06, fluid-intake 0.10   activation 3.61
+  episode #11 (27h ago): mouth C1 [still, round, smooth, medium, lit>0.2] felt swallowed+sweet -> fluid-intake 0.10   activation 3.57
 
 ASSOCIATIONS (target)
-  mouth + concept C1 -> nutrient-intake   weight 0.39   evidence 92   (cue active 1.00)
-  concept C1 -> nutrient-intake   weight 0.20   evidence 106   (cue active 1.00)
-  mouth + hue:red -> nutrient-intake   weight 0.14   evidence 92   (cue active 0.58)
-  still -> nutrient-intake   weight 0.07   evidence 246   (cue active 1.00)
-  mouth + smooth -> water-intake   weight 0.07 (minus extinction here 0.03)   evidence 458   (cue active 0.88)
-  smooth -> water-intake   weight 0.07   evidence 395   (cue active 0.88)
-  round -> nutrient-intake   weight 0.07   evidence 399   (cue active 0.86)
-  smooth -> nutrient-intake   weight 0.06   evidence 395   (cue active 0.88)
-  medium -> nutrient-intake   weight 0.06   evidence 211   (cue active 0.80)
-  round -> water-intake   weight 0.06   evidence 399   (cue active 0.86)
-  still -> water-intake   weight 0.05   evidence 246   (cue active 1.00)
-  lit>0.2 -> water-intake   weight 0.08   evidence 394   (cue active 0.55)
-  hue:red -> nutrient-intake   weight 0.07   evidence 117   (cue active 0.58)
-  mouth + glossy -> water-intake   weight 0.08 (minus extinction here 0.02)   evidence 175   (cue active 0.51)
+  mouth + concept C1 -> nutrient-intake   weight 0.34 (minus extinction here 0.10)   evidence 84   (cue active 1.00)
+  concept C1 -> nutrient-intake   weight 0.25   evidence 95   (cue active 1.00)
+  still -> nutrient-intake   weight 0.08   evidence 317   (cue active 1.00)
+  mouth + hue:red -> nutrient-intake   weight 0.12 (minus extinction here 0.04)   evidence 84   (cue active 0.58)
+  smooth -> fluid-intake   weight 0.08   evidence 450   (cue active 0.88)
+  mouth + smooth -> fluid-intake   weight 0.07 (minus extinction here 0.03)   evidence 480   (cue active 0.88)
+  round -> nutrient-intake   weight 0.07   evidence 482   (cue active 0.86)
+  round -> fluid-intake   weight 0.07   evidence 482   (cue active 0.86)
+  medium -> nutrient-intake   weight 0.07   evidence 280   (cue active 0.80)
+  smooth -> nutrient-intake   weight 0.06   evidence 450   (cue active 0.88)
+  still -> fluid-intake   weight 0.05   evidence 317   (cue active 1.00)
+  hue:red -> nutrient-intake   weight 0.09   evidence 98   (cue active 0.58)
+  lit>0.2 -> fluid-intake   weight 0.09   evidence 459   (cue active 0.55)
+  mouth + glossy -> fluid-intake   weight 0.09 (minus extinction here 0.00)   evidence 165   (cue active 0.51)
 
 BELIEFS (explicit)
-  "contact + concept C1 -> nutrient-intake"  confidence 0.49, 60 trials, source: OwnExperience, evidence episodes [1, 2, 3, 4]
-  "mouth + concept C1 -> nutrient-intake"  confidence 0.48, 59 trials, source: OwnExperience, evidence episodes [1, 2, 3, 4]
-  "concept C1 -> nutrient-intake"  confidence 0.37, 60 trials, source: OwnExperience, evidence episodes [1, 2, 3, 4]
+  "contact + concept C1 -> nutrient-intake"  confidence 0.60, 61 trials, source: OwnExperience, evidence episodes [1, 2, 3, 4]
+  "mouth + concept C1 -> nutrient-intake"  confidence 0.58, 59 trials, source: OwnExperience, evidence episodes [1, 2, 3, 4]
+  "concept C1 -> nutrient-intake"  confidence 0.47, 67 trials, source: OwnExperience, evidence episodes [1, 2, 3, 4]
 
 EMOTION
-  distress 0.18, fear 0.05   mood P-0.24 A+0.25 D+0.15
+  distress 0.18   mood P-0.21 A+0.21 D+0.18
 
 PREDICTIONS (expected outcome if I...)
-  mouth C1@5m            pain 0.01  nutrient 0.44  water 0.15   [last times: pain 0.00, nutrient 0.21, water 0.12]
-  approach C1@5m         pain 0.00  nutrient 0.00  water 0.00
-  touch C1@5m            pain 0.00  nutrient 0.01  water 0.00
-  rest                   pain 0.00  nutrient 0.00  water 0.00
-  wander                 pain 0.00  nutrient 0.00  water 0.00
-  inspect C1@5m from 2m  pain 0.00  nutrient 0.00  water 0.00
+  mouth C1@5m            pain 0.01  nutrient 0.37  fluid 0.13   [last times: pain 0.00, nutrient 0.02, fluid 0.10]
+  approach C1@5m         pain 0.00  nutrient 0.00  fluid 0.00
+  touch C1@5m            pain 0.00  nutrient 0.01  fluid 0.00
+  rest                   pain 0.00  nutrient 0.00  fluid 0.00
+  inspect C1@5m from 2m  pain 0.00  nutrient 0.00  fluid 0.00
+  wander                 pain 0.00  nutrient 0.00  fluid 0.00
 
 DECISION SYSTEMS
-  REFLEX/GUT:  approach C1@5m (+0.28)
-  HABIT:       mouth C1@5m (+0.03)
-  DELIBERATE:  approach C1@5m (+0.36)
-  arbitration: deliberate weight 0.66 (reliability deliberate 0.97 vs habit 0.97)
+  REFLEX/GUT:  approach C1@5m (+0.31)
+  HABIT:       mouth C1@5m (+0.04)
+  DELIBERATE:  approach C1@5m (+0.37)
+  arbitration: deliberate weight 0.67 (reliability deliberate 0.95 vs habit 0.93)
 
 OPTION SCORES  total = deliberate + habit + gut + curiosity + persistence + noise
-  mouth C1@5m             +0.66 = +0.33 +0.03 +0.28 +0.01 +0.00 +0.01
-  approach C1@5m          +0.60 = +0.35 +0.00 +0.28 +0.01 +0.00 -0.05
-  touch C1@5m             +0.36 = +0.00 -0.00 +0.28 +0.02 +0.00 +0.06
-  rest                    +0.04 = +0.02 +0.00 +0.00 +0.00 +0.00 +0.02
+  mouth C1@5m             +0.65 = +0.28 +0.04 +0.31 +0.01 +0.00 +0.01
+  approach C1@5m          +0.63 = +0.36 +0.00 +0.31 +0.01 +0.00 -0.05
+  touch C1@5m             +0.39 = +0.00 -0.00 +0.31 +0.02 +0.00 +0.06
+  rest                    +0.19 = +0.03 +0.00 +0.00 +0.00 +0.08 +0.08
+  inspect C1@5m from 2m   +0.02 = -0.01 +0.00 +0.09 +0.01 +0.00 -0.07
   wander                  +0.02 = +0.00 +0.00 +0.00 +0.00 +0.00 +0.02
-  inspect C1@5m from 2m   +0.01 = -0.01 +0.00 +0.08 +0.00 +0.00 -0.07
 
 FINAL ACTION: mouth C1@5m
 GOAL: relieve hunger using thing#9cc7
-WHY: mouth C1@5m: strongest reason = expected outcome (deliberate) (+0.33); memory: last times: pain 0.00, nutrient 0.21, water 0.12
+WHY: mouth C1@5m: strongest reason = gut feeling (+0.31); memory: last times: pain 0.00, nutrient 0.02, fluid 0.10
 
 === MOMENT A REACH WAS UNDER WAY (abort or follow through?) ===
 TIME day 3 00:00:05   (tick 172805, context X0)
 
 PERCEPTION
-  thing#9cc7 at 1m: still, round, smooth, medium, lit>0.2, glossy  -> concept C1 (match 1.00)
+  thing#9cc7 at 1m: still, round, smooth, medium, lit>0.2, glossy  -> concept C1 (match 1.00)   gut: pain 0.02 value +0.37
 
 NEEDS
   hunger 0.50   thirst 0.20   pain 0.00   fatigue 0.25
 
 ATTENTION (workspace)
-  1. thing#9cc7 (C1): still, round, smooth   salience 1.36
-  2. memory: episode #17   salience 0.55
+  1. thing#9cc7 (C1): still, round, smooth   salience 1.40
+  2. memory: episode #10   salience 0.60
   3. need: hunger   salience 0.50
   4. need: thirst   salience 0.20
 
@@ -92,53 +92,53 @@ WORKING MEMORY
   workspace capacity: 4 items
 
 MEMORIES ACTIVATED
-  episode #17 (5h ago): mouth C1 [still, medium, round, smooth, lit>0.2] felt swallowed+sweet -> water-intake 0.12   activation 3.30
-  episode #18 (5h ago): mouth C1 [still, round, medium, smooth, hue:red] felt swallowed+sweet -> water-intake 0.12   activation 3.28
+  episode #10 (27h ago): mouth C1 [still, round, smooth, medium, lit>0.2] felt swallowed+sweet -> nutrient-intake 0.06, fluid-intake 0.10   activation 3.59
+  episode #11 (27h ago): mouth C1 [still, round, smooth, medium, lit>0.2] felt swallowed+sweet -> fluid-intake 0.10   activation 3.58
 
 ASSOCIATIONS (target)
-  mouth + concept C1 -> nutrient-intake   weight 0.39   evidence 92   (cue active 1.00)
-  concept C1 -> nutrient-intake   weight 0.20   evidence 106   (cue active 1.00)
-  still -> nutrient-intake   weight 0.07   evidence 246   (cue active 1.00)
-  mouth + hue:red -> nutrient-intake   weight 0.14   evidence 92   (cue active 0.50)
-  round -> nutrient-intake   weight 0.07   evidence 399   (cue active 0.91)
-  mouth + smooth -> water-intake   weight 0.07 (minus extinction here 0.03)   evidence 458   (cue active 0.79)
-  smooth -> water-intake   weight 0.07   evidence 395   (cue active 0.79)
-  round -> water-intake   weight 0.06   evidence 399   (cue active 0.91)
-  medium -> nutrient-intake   weight 0.06   evidence 211   (cue active 0.76)
-  smooth -> nutrient-intake   weight 0.06   evidence 395   (cue active 0.79)
-  still -> water-intake   weight 0.05   evidence 246   (cue active 1.00)
-  lit>0.2 -> water-intake   weight 0.08   evidence 394   (cue active 0.54)
-  mouth + glossy -> water-intake   weight 0.08 (minus extinction here 0.02)   evidence 175   (cue active 0.51)
-  concept C1 -> water-intake   weight 0.04   evidence 106   (cue active 1.00)
+  mouth + concept C1 -> nutrient-intake   weight 0.34 (minus extinction here 0.10)   evidence 84   (cue active 1.00)
+  concept C1 -> nutrient-intake   weight 0.25   evidence 95   (cue active 1.00)
+  still -> nutrient-intake   weight 0.08   evidence 317   (cue active 1.00)
+  round -> nutrient-intake   weight 0.07   evidence 482   (cue active 0.91)
+  mouth + hue:red -> nutrient-intake   weight 0.12 (minus extinction here 0.04)   evidence 84   (cue active 0.50)
+  smooth -> fluid-intake   weight 0.08   evidence 450   (cue active 0.79)
+  round -> fluid-intake   weight 0.07   evidence 482   (cue active 0.91)
+  mouth + smooth -> fluid-intake   weight 0.07 (minus extinction here 0.03)   evidence 480   (cue active 0.79)
+  medium -> nutrient-intake   weight 0.07   evidence 280   (cue active 0.76)
+  still -> fluid-intake   weight 0.05   evidence 317   (cue active 1.00)
+  smooth -> nutrient-intake   weight 0.06   evidence 450   (cue active 0.79)
+  lit>0.2 -> fluid-intake   weight 0.09   evidence 459   (cue active 0.54)
+  mouth + glossy -> fluid-intake   weight 0.09 (minus extinction here 0.00)   evidence 165   (cue active 0.51)
+  hue:red -> nutrient-intake   weight 0.09   evidence 98   (cue active 0.50)
 
 BELIEFS (explicit)
-  "contact + concept C1 -> nutrient-intake"  confidence 0.49, 60 trials, source: OwnExperience, evidence episodes [1, 2, 3, 4]
-  "mouth + concept C1 -> nutrient-intake"  confidence 0.48, 59 trials, source: OwnExperience, evidence episodes [1, 2, 3, 4]
-  "concept C1 -> nutrient-intake"  confidence 0.37, 60 trials, source: OwnExperience, evidence episodes [1, 2, 3, 4]
+  "contact + concept C1 -> nutrient-intake"  confidence 0.60, 61 trials, source: OwnExperience, evidence episodes [1, 2, 3, 4]
+  "mouth + concept C1 -> nutrient-intake"  confidence 0.58, 59 trials, source: OwnExperience, evidence episodes [1, 2, 3, 4]
+  "concept C1 -> nutrient-intake"  confidence 0.47, 67 trials, source: OwnExperience, evidence episodes [1, 2, 3, 4]
 
 EMOTION
-  distress 0.15, fear 0.04   mood P-0.23 A+0.23 D+0.15
+  distress 0.15   mood P-0.20 A+0.20 D+0.18
 
 PREDICTIONS (expected outcome if I...)
-  mouth C1@1m            pain 0.01  nutrient 0.43  water 0.15   [last times: pain 0.00, nutrient 0.21, water 0.12]
-  touch C1@1m            pain 0.00  nutrient 0.01  water 0.00
-  wander                 pain 0.00  nutrient 0.00  water 0.00
-  inspect C1@1m from 2m  pain 0.00  nutrient 0.00  water 0.00
-  rest                   pain 0.00  nutrient 0.00  water 0.00
+  mouth C1@1m            pain 0.01  nutrient 0.36  fluid 0.12   [last times: pain 0.00, nutrient 0.02, fluid 0.10]
+  touch C1@1m            pain 0.00  nutrient 0.01  fluid 0.00
+  wander                 pain 0.00  nutrient 0.00  fluid 0.00
+  rest                   pain 0.00  nutrient 0.00  fluid 0.00
+  inspect C1@1m from 2m  pain 0.00  nutrient 0.00  fluid 0.00
 
 DECISION SYSTEMS
-  REFLEX/GUT:  touch C1@1m (+0.28)
-  HABIT:       mouth C1@1m (+0.03)
-  DELIBERATE:  mouth C1@1m (+0.34)
-  arbitration: deliberate weight 0.66 (reliability deliberate 0.97 vs habit 0.97)
+  REFLEX/GUT:  touch C1@1m (+0.30)
+  HABIT:       mouth C1@1m (+0.04)
+  DELIBERATE:  mouth C1@1m (+0.29)
+  arbitration: deliberate weight 0.67 (reliability deliberate 0.95 vs habit 0.93)
 
 OPTION SCORES  total = deliberate + habit + gut + curiosity + persistence + noise
-  mouth C1@1m             +0.72 = +0.33 +0.03 +0.28 +0.01 +0.10 -0.03
-  touch C1@1m             +0.32 = +0.00 -0.00 +0.28 +0.02 +0.00 +0.03
-  wander                  +0.06 = +0.00 +0.00 +0.00 +0.00 +0.00 +0.06
-  inspect C1@1m from 2m   +0.02 = -0.01 +0.00 +0.08 +0.00 +0.00 -0.06
-  rest                    -0.02 = +0.02 +0.00 +0.00 +0.00 +0.00 -0.04
+  mouth C1@1m             +0.70 = +0.28 +0.04 +0.30 +0.01 +0.10 -0.03
+  touch C1@1m             +0.35 = +0.00 -0.00 +0.30 +0.02 +0.00 +0.03
+  wander                  +0.05 = +0.00 +0.00 +0.00 +0.00 +0.00 +0.05
+  rest                    +0.05 = +0.03 +0.00 +0.00 +0.00 +0.08 -0.05
+  inspect C1@1m from 2m   +0.04 = -0.01 +0.00 +0.09 +0.01 +0.00 -0.06
 
 FINAL ACTION: mouth C1@1m
 GOAL: relieve hunger using thing#9cc7
-WHY: mouth C1@1m: strongest reason = expected outcome (deliberate) (+0.33); memory: last times: pain 0.00, nutrient 0.21, water 0.12
+WHY: mouth C1@1m: strongest reason = gut feeling (+0.30); memory: last times: pain 0.00, nutrient 0.02, fluid 0.10

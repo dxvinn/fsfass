@@ -2,15 +2,15 @@
 TIME day 3 00:00:00   (tick 172800, context X0)
 
 PERCEPTION
-  thing#7b03 at 5m: still, colourless, smooth, jagged, glossy, lit>0.2  -> concept C5 (match 1.00) NEW
+  thing#7b03 at 5m: still, colourless, smooth, jagged, glossy, lit>0.2  -> concept C5 (match 1.00) NEW   gut: pain 0.02 value +0.17
 
 NEEDS
   hunger 0.50   thirst 0.20   pain 0.00   fatigue 0.25
 
 ATTENTION (workspace)
-  1. thing#7b03 (C5): still, colourless, smooth   salience 0.93
+  1. thing#7b03 (C5): still, colourless, smooth   salience 0.95
   2. need: hunger   salience 0.50
-  3. memory: episode #17   salience 0.36
+  3. memory: episode #10   salience 0.40
   4. need: thirst   salience 0.20
 
 WORKING MEMORY
@@ -18,70 +18,70 @@ WORKING MEMORY
   workspace capacity: 4 items
 
 MEMORIES ACTIVATED
-  episode #17 (5h ago): mouth C1 [still, medium, round, smooth, lit>0.2] felt swallowed+sweet -> water-intake 0.12   activation 2.15
-  episode #19 (3h ago): mouth C2 [smooth, glossy, round, large, lit>0.2] felt watery+swallowed -> water-intake 0.62   activation 2.13
+  episode #10 (27h ago): mouth C1 [still, round, smooth, medium, lit>0.2] felt swallowed+sweet -> nutrient-intake 0.06, fluid-intake 0.10   activation 2.41
+  episode #11 (27h ago): mouth C1 [still, round, smooth, medium, lit>0.2] felt swallowed+sweet -> fluid-intake 0.10   activation 2.38
 
 ASSOCIATIONS (target)
-  still -> nutrient-intake   weight 0.07   evidence 246   (cue active 1.00)
-  mouth + smooth -> water-intake   weight 0.07 (minus extinction here 0.03)   evidence 458   (cue active 0.88)
-  smooth -> water-intake   weight 0.07   evidence 395   (cue active 0.88)
-  smooth -> nutrient-intake   weight 0.06   evidence 395   (cue active 0.88)
-  still -> water-intake   weight 0.05   evidence 246   (cue active 1.00)
-  mouth + glossy -> water-intake   weight 0.08 (minus extinction here 0.02)   evidence 175   (cue active 0.61)
-  lit>0.2 -> water-intake   weight 0.08   evidence 394   (cue active 0.55)
-  glossy -> water-intake   weight 0.06   evidence 315   (cue active 0.61)
-  medium -> nutrient-intake   weight 0.06   evidence 211   (cue active 0.55)
-  lit>0.2 -> nutrient-intake   weight 0.06   evidence 394   (cue active 0.55)
-  mouth + lit>0.2 -> water-intake   weight 0.06 (minus extinction here 0.04)   evidence 499   (cue active 0.55)
-  glossy -> nutrient-intake   weight 0.04   evidence 315   (cue active 0.61)
-  mouth + medium -> nutrient-intake   weight 0.04 (minus extinction here 0.07)   evidence 640   (cue active 0.55)
-  matte -> nutrient-intake   weight 0.04   evidence 268   (cue active 0.39)
+  still -> nutrient-intake   weight 0.08   evidence 317   (cue active 1.00)
+  smooth -> fluid-intake   weight 0.08   evidence 450   (cue active 0.88)
+  mouth + smooth -> fluid-intake   weight 0.07 (minus extinction here 0.03)   evidence 480   (cue active 0.88)
+  smooth -> nutrient-intake   weight 0.06   evidence 450   (cue active 0.88)
+  mouth + glossy -> fluid-intake   weight 0.09 (minus extinction here 0.00)   evidence 165   (cue active 0.61)
+  still -> fluid-intake   weight 0.05   evidence 317   (cue active 1.00)
+  lit>0.2 -> fluid-intake   weight 0.09   evidence 459   (cue active 0.55)
+  glossy -> fluid-intake   weight 0.07   evidence 332   (cue active 0.61)
+  mouth + still -> nutrient-intake   weight 0.04 (minus extinction here 0.09)   evidence 760   (cue active 1.00)
+  medium -> nutrient-intake   weight 0.07   evidence 280   (cue active 0.55)
+  mouth + lit>0.2 -> fluid-intake   weight 0.06 (minus extinction here 0.04)   evidence 555   (cue active 0.55)
+  lit>0.2 -> nutrient-intake   weight 0.06   evidence 459   (cue active 0.55)
+  mouth + smooth -> nutrient-intake   weight 0.03 (minus extinction here 0.07)   evidence 480   (cue active 0.88)
+  glossy -> nutrient-intake   weight 0.04   evidence 332   (cue active 0.61)
 
 BELIEFS (explicit)
   (none relevant)
 
 EMOTION
-  distress 0.18, fear 0.05, interest 0.04   mood P-0.24 A+0.25 D+0.15
+  distress 0.18, interest 0.03   mood P-0.21 A+0.21 D+0.18
 
 PREDICTIONS (expected outcome if I...)
-  mouth C5@5m            pain 0.01  nutrient 0.05  water 0.20   [last times: pain 0.00, nutrient 0.01, water 0.27]
-  touch C5@5m            pain 0.00  nutrient 0.00  water 0.00
-  approach C5@5m         pain 0.00  nutrient 0.00  water 0.00
-  rest                   pain 0.00  nutrient 0.00  water 0.00
-  wander                 pain 0.00  nutrient 0.00  water 0.00
-  inspect C5@5m from 2m  pain 0.00  nutrient 0.00  water 0.00
+  mouth C5@5m            pain 0.01  nutrient 0.10  fluid 0.13   [last times: pain 0.00, nutrient 0.02, fluid 0.10]
+  touch C5@5m            pain 0.00  nutrient 0.00  fluid 0.00
+  approach C5@5m         pain 0.00  nutrient 0.00  fluid 0.00
+  rest                   pain 0.00  nutrient 0.00  fluid 0.00
+  wander                 pain 0.00  nutrient 0.00  fluid 0.00
+  inspect C5@5m from 2m  pain 0.00  nutrient 0.00  fluid 0.00
 
 DECISION SYSTEMS
-  REFLEX/GUT:  approach C5@5m (+0.15)
+  REFLEX/GUT:  approach C5@5m (+0.14)
   HABIT:       no preference
-  DELIBERATE:  mouth C5@5m (+0.10)
-  arbitration: deliberate weight 0.66 (reliability deliberate 0.97 vs habit 0.97)
+  DELIBERATE:  approach C5@5m (+0.12)
+  arbitration: deliberate weight 0.67 (reliability deliberate 0.95 vs habit 0.93)
 
 OPTION SCORES  total = deliberate + habit + gut + curiosity + persistence + noise
-  mouth C5@5m             +0.26 = +0.08 +0.00 +0.15 +0.02 +0.00 +0.01
-  touch C5@5m             +0.22 = -0.01 +0.00 +0.15 +0.02 +0.00 +0.06
-  approach C5@5m          +0.18 = +0.06 +0.00 +0.15 +0.01 +0.00 -0.05
-  rest                    +0.04 = +0.02 +0.00 +0.00 +0.00 +0.00 +0.02
+  mouth C5@5m             +0.26 = +0.09 +0.00 +0.14 +0.02 +0.00 +0.01
+  touch C5@5m             +0.22 = -0.00 +0.00 +0.14 +0.02 +0.00 +0.06
+  approach C5@5m          +0.21 = +0.10 +0.00 +0.14 +0.01 +0.00 -0.05
+  rest                    +0.19 = +0.03 +0.00 +0.00 +0.00 +0.08 +0.08
   wander                  +0.02 = +0.00 +0.00 +0.00 +0.00 +0.00 +0.02
-  inspect C5@5m from 2m   -0.03 = -0.01 +0.00 +0.05 +0.00 +0.00 -0.07
+  inspect C5@5m from 2m   -0.02 = -0.01 +0.00 +0.04 +0.01 +0.00 -0.07
 
 FINAL ACTION: mouth C5@5m
 GOAL: find out about thing#7b03
-WHY: mouth C5@5m: strongest reason = gut feeling (+0.15); memory: last times: pain 0.00, nutrient 0.01, water 0.27
+WHY: mouth C5@5m: strongest reason = gut feeling (+0.14); memory: last times: pain 0.00, nutrient 0.02, fluid 0.10
 
 === MOMENT A REACH WAS UNDER WAY (abort or follow through?) ===
 TIME day 3 00:00:05   (tick 172805, context X0)
 
 PERCEPTION
-  thing#7b03 at 1m: still, warmth>0.1, warmth>0.3, warmth>0.5, colourless, jagged, felt warmth 0.57  -> concept C5 (match 1.00)
+  thing#7b03 at 1m: still, warmth>0.1, warmth>0.3, warmth>0.5, colourless, jagged, felt warmth 0.57  -> concept C5 (match 1.00)   gut: pain 0.29 value -0.10
 
 NEEDS
   hunger 0.50   thirst 0.20   pain 0.00   fatigue 0.25
 
 ATTENTION (workspace)
-  1. thing#7b03 (C5): still, warmth>0.1, warmth>0.3   salience 1.37
+  1. thing#7b03 (C5): still, warmth>0.1, warmth>0.3   salience 1.48
   2. need: hunger   salience 0.50
-  3. memory: episode #5   salience 0.30
+  3. memory: episode #10   salience 0.33
   4. need: thirst   salience 0.20
 
 WORKING MEMORY
@@ -90,56 +90,54 @@ WORKING MEMORY
   workspace capacity: 4 items
 
 MEMORIES ACTIVATED
-  episode #5 [pinned] (47h ago): mouth C4 [lit>0.2, bright>0.45, warmth>0.1, warmth>0.3, warmth>0.5] -> pain 1.00   activation 1.81
-  episode #19 (3h ago): mouth C2 [smooth, glossy, round, large, lit>0.2] felt watery+swallowed -> water-intake 0.62   activation 1.75
+  episode #10 (27h ago): mouth C1 [still, round, smooth, medium, lit>0.2] felt swallowed+sweet -> nutrient-intake 0.06, fluid-intake 0.10   activation 2.00
+  episode #11 (27h ago): mouth C1 [still, round, smooth, medium, lit>0.2] felt swallowed+sweet -> fluid-intake 0.10   activation 1.97
 
 ASSOCIATIONS (target)
-  warmth>0.5 -> pain   weight 0.08 (minus extinction here 0.00)   evidence 1   (cue active 0.98)
+  warmth>0.5 -> pain   weight 0.09 (minus extinction here 0.00)   evidence 4   (cue active 0.98)
   mouth + warmth>0.5 -> pain   weight 0.08   evidence 1   (cue active 0.98)
-  warmth>0.3 -> pain   weight 0.07 (minus extinction here 0.00)   evidence 24   (cue active 1.00)
-  still -> nutrient-intake   weight 0.07   evidence 246   (cue active 1.00)
+  warmth>0.3 -> pain   weight 0.08 (minus extinction here 0.00)   evidence 6   (cue active 1.00)
+  still -> nutrient-intake   weight 0.08   evidence 317   (cue active 1.00)
   mouth + warmth>0.3 -> pain   weight 0.07   evidence 1   (cue active 1.00)
-  mouth + smooth -> water-intake   weight 0.07 (minus extinction here 0.03)   evidence 458   (cue active 0.79)
+  smooth -> fluid-intake   weight 0.08   evidence 450   (cue active 0.79)
   mouth + warmth>0.1 -> pain   weight 0.06   evidence 1   (cue active 1.00)
-  smooth -> water-intake   weight 0.07   evidence 395   (cue active 0.79)
-  smooth -> nutrient-intake   weight 0.06   evidence 395   (cue active 0.79)
-  still -> water-intake   weight 0.05   evidence 246   (cue active 1.00)
-  mouth + glossy -> water-intake   weight 0.08 (minus extinction here 0.02)   evidence 175   (cue active 0.61)
+  warmth>0.1 -> pain   weight 0.06 (minus extinction here 0.01)   evidence 165   (cue active 1.00)
+  mouth + smooth -> fluid-intake   weight 0.07 (minus extinction here 0.03)   evidence 480   (cue active 0.79)
+  mouth + glossy -> fluid-intake   weight 0.09 (minus extinction here 0.00)   evidence 165   (cue active 0.61)
+  still -> fluid-intake   weight 0.05   evidence 317   (cue active 1.00)
+  warmth-felt -> pain   weight 0.09 (minus extinction here 0.00)   evidence 6   (cue active 0.57)
+  smooth -> nutrient-intake   weight 0.06   evidence 450   (cue active 0.79)
   mouth + warmth-felt -> pain   weight 0.08   evidence 1   (cue active 0.57)
-  warmth-felt -> pain   weight 0.08 (minus extinction here 0.01)   evidence 29   (cue active 0.57)
-  lit>0.2 -> water-intake   weight 0.08   evidence 394   (cue active 0.54)
 
 BELIEFS (explicit)
   (none relevant)
 
 EMOTION
-  fear 0.25, distress 0.15, interest 0.03   mood P-0.23 A+0.24 D+0.15
+  fear 0.31, distress 0.15   mood P-0.20 A+0.21 D+0.18
 
 PREDICTIONS (expected outcome if I...)
-  withdraw from C5@1m    pain 0.00  nutrient 0.00  water 0.00
-  touch C5@1m            pain 0.01  nutrient 0.00  water 0.00
-  rest                   pain 0.00  nutrient 0.00  water 0.00
-  wander                 pain 0.00  nutrient 0.00  water 0.00
-  inspect C5@1m from 2m  pain 0.00  nutrient 0.00  water 0.00
-  mouth C5@1m            pain 0.28  nutrient 0.06  water 0.18   [last times: pain 0.30, nutrient 0.01, water 0.24]
+  withdraw from C5@1m    pain 0.00  nutrient 0.00  fluid 0.00
+  rest                   pain 0.00  nutrient 0.00  fluid 0.00
+  wander                 pain 0.00  nutrient 0.00  fluid 0.00
+  inspect C5@1m from 2m  pain 0.00  nutrient 0.00  fluid 0.00
+  mouth C5@1m            pain 0.18  nutrient 0.10  fluid 0.13   [last times: pain 0.00, nutrient 0.02, fluid 0.10]
 
 DECISION SYSTEMS
-  REFLEX/GUT:  withdraw from C5@1m (+0.19)
+  REFLEX/GUT:  withdraw from C5@1m (+0.24)
   HABIT:       no preference
-  DELIBERATE:  withdraw from C5@1m (+0.09)
-  arbitration: deliberate weight 0.66 (reliability deliberate 0.97 vs habit 0.97)
+  DELIBERATE:  withdraw from C5@1m (+0.12)
+  arbitration: deliberate weight 0.67 (reliability deliberate 0.95 vs habit 0.93)
 
 OPTION SCORES  total = deliberate + habit + gut + curiosity + persistence + noise
-  withdraw from C5@1m     +0.30 = +0.09 +0.00 +0.19 +0.00 +0.00 +0.01
-  touch C5@1m             -0.00 = -0.01 +0.00 -0.03 +0.01 +0.00 +0.03
-  rest                    -0.01 = +0.02 +0.00 +0.00 +0.00 +0.00 -0.03
-  wander                  -0.04 = +0.00 +0.00 +0.00 +0.00 +0.00 -0.04
-  inspect C5@1m from 2m   -0.07 = -0.01 +0.00 -0.01 +0.00 +0.00 -0.06
-  mouth C5@1m             -0.09 = -0.14 +0.00 -0.03 +0.00 +0.10 -0.03
+  withdraw from C5@1m     +0.38 = +0.12 +0.00 +0.24 +0.00 +0.00 +0.01
+  rest                    +0.14 = +0.03 +0.00 +0.00 +0.00 +0.08 +0.04
+  wander                  -0.05 = +0.00 +0.00 +0.00 +0.00 +0.00 -0.05
+  inspect C5@1m from 2m   -0.07 = -0.01 +0.00 -0.02 +0.02 +0.00 -0.06
+  mouth C5@1m             -0.12 = -0.05 +0.00 -0.08 +0.00 +0.03 -0.03
 
 FINAL ACTION: withdraw from C5@1m
 GOAL: avoid harm from thing#7b03
-WHY: withdraw from C5@1m: strongest reason = gut feeling (+0.19)
+WHY: withdraw from C5@1m: strongest reason = gut feeling (+0.24)
 
 LEARNING THIS MOMENT
-  second-order: [colourless, still, warmth>0.1, jagged] now predicts pain via what followed it (target 0.19, step 0.18)
+  second-order: [colourless, still, warmth>0.1, jagged] now predicts pain via what followed it (target 0.24, step 0.22)

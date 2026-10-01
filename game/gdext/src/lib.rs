@@ -15,6 +15,8 @@ unsafe impl ExtensionLibrary for GenesisExtension {}
 #[class(base = RefCounted)]
 pub struct GenesisWorld {
     sim: Option<Sim>,
+    loading: Option<genesis_sim::save::Replay>,
+    load_status: String,
     debt: f64,
     actual_speed: f64,
     base: Base<RefCounted>,
@@ -23,7 +25,7 @@ pub struct GenesisWorld {
 #[godot_api]
 impl IRefCounted for GenesisWorld {
     fn init(base: Base<RefCounted>) -> Self {
-        GenesisWorld { sim: None, debt: 0.0, actual_speed: 0.0, base }
+        GenesisWorld { sim: None, loading: None, load_status: String::new(), debt: 0.0, actual_speed: 0.0, base }
     }
 }
 
@@ -80,6 +82,63 @@ impl GenesisWorld {
         let inst = if real_dt > 0.0 { done as f64 / 60.0 / real_dt } else { 0.0 };
         self.actual_speed = self.actual_speed * 0.9 + inst * 0.1;
         done
+    }
+
+    /// The whole world as save-file text (seed + journal + fingerprint).
+    #[func]
+    fn save_text(&self) -> GString {
+        self.sim.as_ref().map(genesis_sim::save::save_text).unwrap_or_default().as_str().into()
+    }
+
+    /// Start rebuilding a saved world. Returns false (see `load_status`) if the text is not a save.
+    #[func]
+    fn begin_load(&mut self, text: GString) -> bool {
+        match genesis_sim::save::Replay::parse(&text.to_string()) {
+            Ok(r) => {
+                self.loading = Some(r);
+                self.load_status = "Rebuilding the world...".into();
+                true
+            }
+            Err(e) => {
+                self.load_status = e;
+                false
+            }
+        }
+    }
+
+    /// Continue rebuilding for up to `budget_ms`. Returns progress 0..1; at 1.0 the
+    /// loaded world replaces the current one.
+    #[func]
+    fn load_step(&mut self, budget_ms: f64) -> f64 {
+        let Some(r) = self.loading.as_mut() else { return 1.0 };
+        let start = Instant::now();
+        loop {
+            if r.run(600) {
+                let ok = r.verified();
+                let r = self.loading.take().unwrap();
+                self.load_status = if ok {
+                    "Loaded. The rebuilt world matches the save exactly.".into()
+                } else {
+                    "Loaded, but the rebuilt world differs from the save (fingerprint mismatch).".into()
+                };
+                self.sim = Some(r.sim);
+                self.debt = 0.0;
+                return 1.0;
+            }
+            if start.elapsed().as_secs_f64() * 1000.0 > budget_ms {
+                return r.progress();
+            }
+        }
+    }
+
+    #[func]
+    fn is_loading(&self) -> bool {
+        self.loading.is_some()
+    }
+
+    #[func]
+    fn load_status(&self) -> GString {
+        self.load_status.as_str().into()
     }
 
     /// Run `ticks` simulation seconds immediately at the cognition LOD of `speed`
@@ -180,7 +239,7 @@ impl GenesisWorld {
     #[func]
     fn select(&mut self, id: i64) {
         if let Some(s) = self.sim.as_mut() {
-            s.selected = if id < 0 { None } else { Some(id as u32) };
+            s.set_selected(if id < 0 { None } else { Some(id as u32) });
         }
     }
 

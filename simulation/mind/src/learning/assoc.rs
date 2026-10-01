@@ -237,11 +237,16 @@ impl Assoc {
                 den += x[c];
             }
         }
-        if den.raw() == 0 {
-            Fx::ZERO
-        } else {
-            num / den
+        let avg = if den.raw() == 0 { Fx::ZERO } else { num / den };
+        // A thing recognised as a well-known category is familiar even when one
+        // passing feature (it is walking now) is new: habituation is to the thing.
+        let mut known = Fx::ZERO;
+        for c in N_SENSE..N_CUES {
+            if x[c] > fx(0.9) {
+                known = known.max(Fx::from_int(self.evidence[ai(a, c)] as i64));
+            }
         }
+        avg.max(known)
     }
 
     /// Record that a non-contact action (inspect, approach, withdraw) was

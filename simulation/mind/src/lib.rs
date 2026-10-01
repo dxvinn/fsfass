@@ -39,7 +39,7 @@ use concepts::{ConceptStore, Recognition};
 use encode::{describe, encode, encode_consequence, ConseqVec, SenseVec, N_CONSEQ, N_SENSE};
 use learning::assoc::{
     action_label, outcome_label, Assoc, CueVec, Out, A_APPROACH, A_CONTACT, A_INSPECT, A_MOUTH, A_TOUCH, A_WITHDRAW, N_ACT,
-    N_CTX, N_CUES, N_OUT, O_HYDRATE, O_NOURISH, O_PAIN,
+    N_CTX, N_CUES, N_OUT, O_HYDRATE, O_NOURISH, O_PAIN, O_SOCIAL,
 };
 use learning::habit::{Habits, H_REST, H_WANDER};
 use memory::episodic::{Episode, EpisodicMemory, Recall};
@@ -129,6 +129,8 @@ struct PState {
     rec: Recognition,
     conseq: ConseqVec,
     contact: bool,
+    /// It touched me this tick (I felt its touch on my skin).
+    touched_me: bool,
     pav: Out,
     pav_value: Fx,
     salience: Fx,
@@ -183,6 +185,9 @@ pub struct Mind {
     repeats: u16,
     pub trace_enabled: bool,
     pub last_trace: Option<TraceRecord>,
+    /// Observer/debug output only (never read back by the mind): which private
+    /// concept id each perceived token was recognised as on the last step.
+    pub last_recognised: Vec<(Token, u16)>,
     pub stats: MindStats,
     pub last_learning: Vec<String>,
 }
@@ -217,6 +222,7 @@ impl Mind {
             repeats: 0,
             trace_enabled: false,
             last_trace: None,
+            last_recognised: Vec::new(),
             stats: MindStats::default(),
             last_learning: Vec::new(),
         }
@@ -320,9 +326,11 @@ impl Mind {
 
         // 1. Perception.
         let mut ps: Vec<PState> = Vec::with_capacity(f.percepts.len());
+        self.last_recognised.clear();
         for p in &f.percepts {
             let sense = encode(p);
             let rec = self.concepts.recognise(&sense, tick);
+            self.last_recognised.push((p.token, rec.id));
             if let Some(old) = rec.replaced {
                 self.assoc.clear_cue(N_SENSE + rec.slot);
                 self.habits.clear_concept(old);
@@ -342,6 +350,7 @@ impl Mind {
                 rec,
                 conseq,
                 contact: p.touch.is_some() || p.taste.is_some(),
+                touched_me: p.touched_me,
                 pav: [Fx::ZERO; N_OUT],
                 pav_value: Fx::ZERO,
                 salience: Fx::ZERO,
@@ -489,11 +498,32 @@ impl Mind {
             let rec = recalls.iter().find(|(pi, _)| *pi == i).map(|(_, r)| r.as_slice()).unwrap_or(&[]);
             for (cmd, a) in acts {
                 let o = self.score_option(cmd, a, i, &ps, rec, &util, ctx, f, temp, &mut rng, last_cmd);
-                opts.push(o);
+                // Learned affordances: after many tries that reliably did nothing,
+                // "put that in my mouth" stops even coming to mind for this kind of thing.
+                let pointless = matches!(a, A_TOUCH | A_MOUTH)
+                    && q.ev[a] >= fx(30.0)
+                    && o.pred.iter().all(|v| v.abs() < fx(0.03))
+                    && o.curiosity < fx(0.005)
+                    && o.habit <= Fx::ZERO
+                    && last_cmd != Some(cmd);
+                if !pointless {
+                    opts.push(o);
+                }
             }
         }
         // Untargeted options.
-        let wander_dir = rng.below(8) as u8;
+        // Searching keeps a heading (covering ground) rather than a random walk.
+        let turn = rng.below(10);
+        let fresh_dir = rng.below(8) as u8;
+        let wander_dir = match last_cmd {
+            Some(MotorCommand::Wander { dir }) if turn != 0 => dir,
+            _ => fresh_dir,
+        };
+        // Need-driven search: hungry or thirsty with nothing in view that I know
+        // would satisfy it, going elsewhere is worth something (area-restricted search).
+        let nourishing_in_view = ps.iter().any(|q| q.pred[A_MOUTH][O_NOURISH] > fx(0.1));
+        let quenching_in_view = ps.iter().any(|q| q.pred[A_MOUTH][O_HYDRATE] > fx(0.1));
+        let search = ((if nourishing_in_view { Fx::ZERO } else { f.body.hunger }) + (if quenching_in_view { Fx::ZERO } else { f.body.thirst })).min(Fx::ONE);
         let bored = Fx::ONE - attended.iter().map(|&i| ps[i].salience).fold(Fx::ZERO, |m, s| m.max(s)).min(Fx::ONE);
         for cmd in [MotorCommand::Wander { dir: wander_dir }, MotorCommand::Rest] {
             let h = if matches!(cmd, MotorCommand::Rest) { H_REST } else { H_WANDER };
@@ -501,7 +531,7 @@ impl Mind {
             let deliberate = if matches!(cmd, MotorCommand::Rest) {
                 f.body.fatigue * fx(0.15) + f.body.pain * fx(0.2)
             } else {
-                fx(0.04) * bored * self.params.curiosity
+                fx(0.04) * bored * self.params.curiosity + fx(0.15) * search
             };
             let persistence = if last_cmd.map(|c| std::mem::discriminant(&c)) == Some(std::mem::discriminant(&cmd)) {
                 self.params.persistence * fx(0.5)
@@ -526,6 +556,17 @@ impl Mind {
             });
         }
 
+        // Doing nothing in particular is the default, not one option among dozens:
+        // with independent noise on every option the best of many random draws
+        // would otherwise beat resting almost always (expected max of n Gaussians
+        // ~ sqrt(2 ln n)), and an idle person would act on whatever is nearest.
+        let n = Fx::from_int(opts.len().max(2) as i64);
+        let default_bonus = temp * (n.ln_fast().muli(2)).sqrt() * fx(0.8);
+        for o in opts.iter_mut() {
+            if matches!(o.cmd, MotorCommand::Rest) {
+                o.persistence += default_bonus;
+            }
+        }
         // Arbitration between habit and deliberate control (reliability-based).
         let r_mb = (Fx::ONE - self.model_error).clamp01();
         let r_mf = self.habits.reliability();
@@ -684,8 +725,13 @@ impl Mind {
             3 => fx(0.3),
             _ => fx(0.1),
         };
+        // Outcome-specific transfer: a cue that predicts nutrient or fluid intake invites the
+        // mouth; one that predicts comfort invites approach and touch, not tasting.
+        let v = drives::innate_valence(&f.body);
+        let ingestive = q.pav[O_NOURISH] * v[O_NOURISH] + q.pav[O_HYDRATE] * v[O_HYDRATE] + q.pav[O_PAIN] * v[O_PAIN];
         let gut = match a {
-            A_APPROACH | A_TOUCH | A_MOUTH => k * q.pav_value,
+            A_APPROACH | A_TOUCH => k * q.pav_value,
+            A_MOUTH => k * ingestive,
             A_INSPECT => k * q.pav_value * fx(0.3),
             A_WITHDRAW => {
                 // Pulling away from the thing that is hurting right now (acute pain on contact).
@@ -713,7 +759,11 @@ impl Mind {
         let mut persistence = Fx::ZERO;
         if last_cmd == Some(cmd) && f.last_result != alife_interface::MotorResult::Failed {
             let fatigue_of_repeating = (Fx::ONE - Fx::from_int(self.repeats as i64) / fx(30.0)).clamp01();
-            persistence = self.params.persistence * fatigue_of_repeating;
+            // Keep at something in proportion to why it is worth doing; an act with no
+            // expected value and nothing left to learn is not clung to.
+            let worth = (deliberate + habit + gut + curiosity).max(Fx::ZERO);
+            let relevance = (fx(0.3) + worth.muli(10)).min(Fx::ONE);
+            persistence = self.params.persistence * fatigue_of_repeating * relevance;
             // Finishing a reach that has just started (contact is a two-step act).
             if matches!(cmd, MotorCommand::Touch { .. } | MotorCommand::Mouth { .. }) && q.dist <= 1 && self.repeats == 0 {
                 persistence = self.params.persistence;
@@ -740,6 +790,15 @@ impl Mind {
     fn learn(&mut self, f: &SensoryFrame, ps: &[PState], out: &Out, reward: Fx, ctx: usize, tick: u64) {
         let any_out = out.iter().any(|v| v.is_positive());
         let pending = self.pending.take();
+        // Being touched: comfort (or a bite) felt on the skin comes from whoever
+        // touched me, not from whatever I happened to be doing at the time.
+        let toucher = ps.iter().position(|q| q.touched_me);
+        let target_tok = pending.as_ref().and_then(|p| p.target);
+        // Comfort is a skin sensation (affective touch), localised like pain: my own
+        // action earns it only if that action was my hand on that one.
+        let hand_on_target = pending.as_ref().map_or(false, |p| p.act == Some(A_TOUCH))
+            && target_tok.and_then(|t| ps.iter().find(|q| q.token == t)).map_or(false, |q| q.contact);
+        let social_elsewhere = out[O_SOCIAL].is_positive() && !hand_on_target;
         let mut max_delta = Fx::ZERO;
         if let Some(pd) = &pending {
             let tq = pd.target.and_then(|t| ps.iter().find(|q| q.token == t));
@@ -756,9 +815,17 @@ impl Mind {
                     if out[O_PAIN].is_positive() && site_onset <= out[O_PAIN] * fx(0.5) {
                         out_i[O_PAIN] = Fx::ZERO;
                     }
+                    if social_elsewhere {
+                        out_i[O_SOCIAL] = Fx::ZERO;
+                    }
                     let out = &out_i;
                     if a == A_TOUCH || a == A_MOUTH {
-                        self.assoc.learn_instrumental(&self.params, A_CONTACT, &pd.cue, out, ctx, Fx::ONE, &AVERSIVE);
+                        // The contact family generalises what a *thing* does to any contact
+                        // (heat hurts hand and mouth alike). Comfort is what a touch does,
+                        // so it is not generalised from the hand to the mouth.
+                        let mut out_c = *out;
+                        out_c[O_SOCIAL] = Fx::ZERO;
+                        self.assoc.learn_instrumental(&self.params, A_CONTACT, &pd.cue, &out_c, ctx, Fx::ONE, &AVERSIVE);
                     }
                     let rep = self.assoc.learn_instrumental(&self.params, a, &pd.cue, out, ctx, Fx::ONE, &AVERSIVE);
                     self.stats.instrumental_trials += 1;
@@ -828,7 +895,18 @@ impl Mind {
                 }
             }
         }
-        if any_out {
+        let mut out_p = *out;
+        if social_elsewhere {
+            out_p[O_SOCIAL] = Fx::ZERO;
+            if let Some(k) = toucher {
+                let mut social = [Fx::ZERO; N_OUT];
+                social[O_SOCIAL] = out[O_SOCIAL];
+                self.assoc.learn_pavlovian(&self.params, &[(ps[k].cue, Fx::ONE)], &social, ctx, &AVERSIVE);
+                self.last_learning.push(format!("being touched felt comforting: [{}] now predicts comfort", describe(&ps[k].sense, 4).join(", ")));
+            }
+        }
+        let out = &out_p;
+        if out.iter().any(|v| v.is_positive()) {
             // Pavlovian: whatever was in mind when it happened gets some of the credit.
             let mut cues: Vec<(CueVec, Fx)> = Vec::new();
             let site_onset0 = (f.body.pain_hand - self.prev_body.pain_hand).max(f.body.pain_mouth - self.prev_body.pain_mouth);
@@ -848,12 +926,14 @@ impl Mind {
                 if Some(q.token) == pending.as_ref().and_then(|p| p.target) {
                     continue;
                 }
-                let e = if localised {
+                let e = if !localised && q.touched_me {
+                    Fx::ONE // it touched me just as I was hurt: a bite, a blow
+                } else if localised {
                     if acted { fx(0.05) } else { fx(0.2) }
                 } else {
                     fx(0.6) / Fx::from_int(1 + q.dist as i64)
                 };
-                if self.wm.holds(q.token) || (!localised && q.dist <= 2) {
+                if self.wm.holds(q.token) || (!localised && q.dist <= 2) || q.touched_me {
                     cues.push((q.cue, e));
                 }
             }

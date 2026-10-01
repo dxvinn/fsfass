@@ -33,3 +33,32 @@ fn same_seed_same_world() {
 fn different_seed_different_world() {
     assert_ne!(run(5), run(6));
 }
+
+#[test]
+fn save_and_load_rebuilds_the_identical_world() {
+    use genesis_sim::save::{fingerprint, save_text, Replay};
+    let mut sim = Sim::new(9, 120, 90);
+    for t in 0..7200u32 {
+        match t {
+            300 => sim.set_speed_lod(25),
+            900 => {
+                sim.god("fire", 50, 40);
+                sim.god("create_grazer", 30, 30);
+            }
+            1500 => {
+                let id = sim.creatures.iter().find(|c| c.kind == genesis_sim::Kind::Human).map(|c| c.id);
+                sim.set_selected(id);
+            }
+            3000 => sim.set_speed_lod(1000),
+            5000 => sim.set_selected(None),
+            _ => {}
+        }
+        sim.step();
+    }
+    let text = save_text(&sim);
+    let mut r = Replay::parse(&text).expect("parses");
+    while !r.run(500) {}
+    assert!(r.verified(), "rebuilt world differs");
+    assert_eq!(fingerprint(&r.sim), fingerprint(&sim));
+    assert_eq!(save_text(&r.sim), text, "re-saving the loaded world gives the same file");
+}

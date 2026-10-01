@@ -3,7 +3,7 @@
 
 use crate::{cheb, obj_name, rel, Creature, Kind, Sim, Target, TICKS_PER_DAY};
 use alife_core::Fx;
-use alife_mind::learning::assoc::{action_label, outcome_label, N_CUES, N_OUT, A_MOUTH, A_TOUCH};
+use alife_mind::learning::assoc::{action_label, N_CUES, N_OUT, A_MOUTH, A_TOUCH};
 use alife_mind::memory::semantic::Source;
 use std::fmt::Write as _;
 
@@ -272,12 +272,12 @@ pub fn inspect_json(sim: &Sim, id: u32) -> String {
             for out in 0..N_OUT {
                 let w = m.assoc.pav_fast[cue][out] + m.assoc.pav_slow[cue][out];
                 if w > Fx::from_f64(0.08) {
-                    know.push((m.cue_name(cue), format!("predicts {}", outcome_label(out)), w, m.assoc.pav_evidence[cue]));
+                    know.push((readable_cue(sim, c, &m.cue_name(cue)), format!("mean {}", readable_outcome(out)), w, m.assoc.pav_evidence[cue]));
                 }
                 for a in [A_TOUCH, A_MOUTH] {
                     let w = m.assoc.inst_fast[a * N_CUES + cue][out] + m.assoc.inst_slow[a * N_CUES + cue][out];
                     if w > Fx::from_f64(0.08) {
-                        know.push((m.cue_name(cue), format!("{} it -> {}", action_label(a), outcome_label(out)), w, m.assoc.evidence[a * N_CUES + cue]));
+                        know.push((readable_cue(sim, c, &m.cue_name(cue)), format!("{} them → {}", if a == A_TOUCH { "touch" } else { "put in mouth" }, readable_outcome(out)), w, m.assoc.evidence[a * N_CUES + cue]));
                     }
                 }
             }
@@ -306,12 +306,14 @@ pub fn inspect_json(sim: &Sim, id: u32) -> String {
                 Source::Observed { who } => format!("watched {}", name_of(sim, who)),
                 Source::Told { who } => format!("told by {}", name_of(sim, who)),
             };
-            let text = format!(
-                "{}{} -> {}",
-                b.action.map(|a| format!("{} + ", action_label(a as usize))).unwrap_or_default(),
-                m.cue_name(b.cue as usize),
-                outcome_label(b.outcome as usize)
-            );
+            let cue = readable_cue(sim, c, &m.cue_name(b.cue as usize));
+            let out = readable_outcome(b.outcome as usize);
+            let text = match b.action.map(|a| a as usize) {
+                Some(A_TOUCH) => format!("Touching {cue} brings {out}"),
+                Some(A_MOUTH) => format!("Putting {cue} in the mouth brings {out}"),
+                Some(a) => format!("{} {cue} brings {out}", action_label(a)),
+                None => format!("{} mean {out}", capitalize(&cue)),
+            };
             let _ = write!(o, "{{\"belief\":{},\"confidence\":{},\"source\":{},\"evidence\":{}}}", q(&text), f(b.confidence), q(&src), b.evidence);
         }
         o.push_str("],");
@@ -343,10 +345,10 @@ pub fn inspect_json(sim: &Sim, id: u32) -> String {
 /// with what the player can see is really there ("berry bush"). The mind never
 /// receives these names; this is applied to the exported text after the fact.
 fn observer_names(sim: &Sim, c: &Creature, text: &str) -> String {
-    if !text.contains("thing#") {
-        return text.to_string();
+    let mut out = concept_names(sim, c, text);
+    if !out.contains("thing#") {
+        return out;
     }
-    let mut out = text.to_string();
     for (tk, t) in &c.tokens {
         let key = format!("thing#{:04x}", tk.0 & 0xffff);
         if !out.contains(&key) {
@@ -360,6 +362,61 @@ fn observer_names(sim: &Sim, c: &Creature, text: &str) -> String {
         out = out.replace(&key, &name);
     }
     out
+}
+
+/// "concept C12" -> "C12 (berry bush)": what this private category has really
+/// been recognised on so far (observer view).
+fn concept_names(sim: &Sim, c: &Creature, text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(p) = rest.find("concept C") {
+        out.push_str(&rest[..p]);
+        let after = &rest[p + 9..];
+        let digits: String = after.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+        if digits.is_empty() {
+            out.push_str("concept C");
+            rest = after;
+            continue;
+        }
+        let id: u16 = digits.parse().unwrap_or(0);
+        match sim.concept_meaning(c, id) {
+            Some(m) => out.push_str(&format!("C{id} ({m})")),
+            None => out.push_str(&format!("C{id}")),
+        }
+        rest = &after[digits.len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Plain-language name for a cue: a sensation ("red things", "faces", "hot
+/// things") or a learned category ("C3 (berry bush)").
+pub fn readable_cue(sim: &Sim, c: &Creature, raw: &str) -> String {
+    if raw.starts_with("concept C") {
+        return concept_names(sim, c, raw);
+    }
+    if let Some(h) = raw.strip_prefix("hue:") {
+        return format!("{h} things");
+    }
+    match raw {
+        "colourless" => "grey things".into(),
+        "dark" => "dark things".into(),
+        "lit>0.2" => "visible (lit) things".into(),
+        "bright>0.45" => "bright things".into(),
+        "glaring>0.7" => "glaring, glowing things".into(),
+        "warmth-felt" | "warmth>0.1" => "slightly warm things".into(),
+        "warmth>0.3" => "warm things".into(),
+        "warmth>0.5" => "hot things".into(),
+        "warmth>0.7" => "very hot things".into(),
+        "face" => "faces".into(),
+        "moving" => "moving things".into(),
+        "jagged" => "jagged things".into(),
+        other => format!("{other} things"),
+    }
+}
+
+fn readable_outcome(o: usize) -> &'static str {
+    ["pain", "food", "drink", "comfort", "warmth"][o % 5]
 }
 
 fn ago_text(t: u64) -> String {
@@ -448,4 +505,12 @@ pub fn _known_targets(c: &Creature) -> usize {
 
 pub fn _rel_name(sim: &Sim, c: &Creature, other: u32) -> Option<String> {
     rel(&c.relations, other).map(|_| name_of(sim, other))
+}
+
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
 }

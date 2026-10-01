@@ -36,6 +36,8 @@ pub fn sense(world: &World, ai: usize) -> SensoryFrame {
             roundness: (p.roundness + noise(&mut rng, fx(0.03))).clamp01(),
             texture: (p.roughness + noise(&mut rng, fx(0.03))).clamp01(),
             gloss: (p.gloss + noise(&mut rng, fx(0.03))).clamp01(),
+            motion: Fx::ZERO,
+            face: Fx::ZERO,
         };
         // Warmth felt from this direction; much stronger on a hand/face held close to it.
         let mut warmth = world.radiant_from(o, a.x, a.y);
@@ -54,6 +56,7 @@ pub fn sense(world: &World, ai: usize) -> SensoryFrame {
             felt_warmth,
             touch,
             taste,
+            touched_me: false,
         });
     }
     // Present percepts in a canonical order that carries no identity: by token.

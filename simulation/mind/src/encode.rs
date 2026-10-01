@@ -20,17 +20,21 @@ pub const U_ROUGH: usize = 25;
 pub const U_SMOOTH: usize = 26;
 pub const U_GLOSSY: usize = 27;
 pub const U_MATTE: usize = 28;
+/// Seen self-propelled motion (innate motion detectors).
+pub const U_MOVING: usize = 29;
+/// Face-like pattern (innate face orienting, present from birth).
+pub const U_FACE: usize = 30;
 /// Graded felt warmth (linear in intensity).
-pub const U_WARM_LIN: usize = 29;
+pub const U_WARM_LIN: usize = 31;
 /// Felt warmth thresholds >0.1, >0.3, >0.5, >0.7 (thermometer code: like
 /// thermoreceptors with different thresholds, a hotter sensation recruits all
 /// the units a milder one does, plus more).
-pub const U_WARM0: usize = 30;
+pub const U_WARM0: usize = 32;
 pub const N_WARM: usize = 4;
 /// Number of sense units available before acting (vision + distal warmth).
-pub const N_SENSE: usize = 34;
+pub const N_SENSE: usize = 36;
 /// Units used for object categories (vision only; warmth depends on distance).
-pub const N_VISUAL: usize = 29;
+pub const N_VISUAL: usize = 31;
 
 pub type SenseVec = [Fx; N_SENSE];
 
@@ -89,6 +93,8 @@ pub fn encode(p: &Percept) -> SenseVec {
     u[U_SMOOTH] = Fx::ONE - v.texture;
     u[U_GLOSSY] = v.gloss;
     u[U_MATTE] = Fx::ONE - v.gloss;
+    u[U_MOVING] = ramp(v.motion, fx(0.5), fx(0.4));
+    u[U_FACE] = ramp(v.face, fx(0.4), fx(0.3));
     let w = p.felt_warmth.clamp01();
     if w > fx(0.03) {
         u[U_WARM_LIN] = w;
@@ -131,6 +137,8 @@ pub fn sense_salience(i: usize) -> Fx {
         _ if (U_FLICK0..U_FLICK0 + 3).contains(&i) => [fx(0.3), fx(0.6), fx(1.0)][i - U_FLICK0],
         _ if (U_SIZE0..U_SIZE0 + 3).contains(&i) => fx(0.4),
         U_ROUND | U_ANGULAR | U_ROUGH | U_SMOOTH | U_GLOSSY | U_MATTE => fx(0.3),
+        U_MOVING => fx(0.8),
+        U_FACE => fx(0.9),
         U_WARM_LIN => fx(1.0),
         _ if (U_WARM0..U_WARM0 + N_WARM).contains(&i) => [fx(0.7), fx(0.9), fx(1.0), fx(1.0)][i - U_WARM0],
         _ => fx(0.5),
@@ -156,6 +164,8 @@ pub fn sense_label(i: usize) -> String {
         U_SMOOTH => "smooth".into(),
         U_GLOSSY => "glossy".into(),
         U_MATTE => "matte".into(),
+        U_MOVING => "moving".into(),
+        U_FACE => "face".into(),
         U_WARM_LIN => "warmth-felt".into(),
         _ if (U_WARM0..U_WARM0 + N_WARM).contains(&i) => {
             ["warmth>0.1", "warmth>0.3", "warmth>0.5", "warmth>0.7"][i - U_WARM0].into()

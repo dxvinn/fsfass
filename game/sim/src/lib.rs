@@ -9,6 +9,7 @@ pub mod export;
 pub mod genetics;
 pub mod names;
 pub mod render;
+pub mod save;
 pub mod terrain;
 
 use alife_biology::{Body, Site};
@@ -116,6 +117,14 @@ pub struct Creature {
     pub tokens: Vec<(Token, Target)>,
     pub touched: Option<(Target, Touch)>,
     pub tasted: Option<(Target, Taste)>,
+    /// Who touched this creature's skin, and when (felt as being touched).
+    pub touched_by: Option<(u32, u64)>,
+    /// Last tick this creature changed cell (seen as movement by others).
+    pub moved_tick: u64,
+    /// Destination currently being reached by a planned detour (body-level navigation).
+    pub detour: Option<(i32, i32)>,
+    /// Observer statistics: (private concept id, true kind of thing, times recognised).
+    pub concept_seen: Vec<(u16, &'static str, u32)>,
     pub last_contact: Option<Target>,
     pub last_result: MotorResult,
     pub loneliness: Fx,
@@ -191,6 +200,8 @@ pub struct Sim {
     /// Steps to the nearest drinkable water over walkable land (animal navigation);
     /// empty means "recompute".
     pub water_dist: Vec<u16>,
+    /// Everything that came from outside the simulation, for save/load replay.
+    pub journal: Vec<save::JournalEntry>,
 }
 
 fn props_for(kind: ObjKind) -> ObjProps {
@@ -278,6 +289,8 @@ fn creature_visual(c: &Creature) -> Visual {
             roundness: fx(0.55),
             texture: fx(0.3),
             gloss: fx(0.2),
+            motion: fx(0.3),
+            face: Fx::ONE,
         },
         Kind::Grazer => Visual {
             hue_deg: fx(32.0),
@@ -288,6 +301,8 @@ fn creature_visual(c: &Creature) -> Visual {
             roundness: fx(0.6),
             texture: fx(0.6),
             gloss: fx(0.15),
+            motion: fx(0.3),
+            face: fx(0.3),
         },
         Kind::Predator => Visual {
             hue_deg: fx(210.0),
@@ -298,6 +313,8 @@ fn creature_visual(c: &Creature) -> Visual {
             roundness: fx(0.3),
             texture: fx(0.85),
             gloss: fx(0.1),
+            motion: fx(0.3),
+            face: fx(0.35),
         },
     }
 }
@@ -312,6 +329,8 @@ fn water_visual() -> Visual {
         roundness: fx(0.8),
         texture: Fx::ZERO,
         gloss: fx(0.95),
+        motion: Fx::ZERO,
+        face: Fx::ZERO,
     }
 }
 
@@ -348,6 +367,7 @@ impl Sim {
             prof_sense_ns: 0,
             prof_mind_ns: 0,
             water_dist: Vec::new(),
+            journal: Vec::new(),
             prof_rest_ns: 0,
         };
         s.populate();
@@ -596,6 +616,10 @@ impl Sim {
             tokens: Vec::new(),
             touched: None,
             tasted: None,
+            touched_by: None,
+            moved_tick: 0,
+            detour: None,
+            concept_seen: Vec::new(),
             last_contact: None,
             last_result: MotorResult::Ok,
             loneliness: fx(0.2),
@@ -664,6 +688,10 @@ impl Sim {
             tokens: Vec::new(),
             touched: None,
             tasted: None,
+            touched_by: None,
+            moved_tick: 0,
+            detour: None,
+            concept_seen: Vec::new(),
             last_contact: None,
             last_result: MotorResult::Ok,
             loneliness: Fx::ZERO,
@@ -788,6 +816,10 @@ impl Sim {
             match self.creatures[i].kind {
                 Kind::Human => self.human_tick(i),
                 _ => self.animal_tick(i),
+            }
+            let c = &mut self.creatures[i];
+            if c.x != c.px || c.y != c.py {
+                c.moved_tick = self.tick;
             }
         }
         if self.tick % 30 == 0 {
@@ -1102,6 +1134,8 @@ impl Sim {
                         roundness: p.roundness,
                         texture: p.roughness,
                         gloss: p.gloss,
+                        motion: Fx::ZERO,
+                        face: Fx::ZERO,
                     };
                     let mut w = Self::radiant(o, cx, cy);
                     if reach_t == Some(t) {
@@ -1113,6 +1147,11 @@ impl Sim {
                     let o = self.creatures.iter().find(|o| o.id == cid).expect("alive");
                     let mut v = creature_visual(o);
                     v.brightness = (v.brightness * (fx(0.4) + light * fx(0.7))).clamp01();
+                    // Living things fidget and breathe; walking is unmistakable.
+                    let window = 2 * self.human_interval.max(self.animal_interval).max(1) as u64;
+                    if self.tick <= o.moved_tick + window {
+                        v.motion = Fx::ONE;
+                    }
                     (v, Fx::ZERO, (o.x, o.y))
                 }
                 Target::Water(x, y) => {
@@ -1131,6 +1170,8 @@ impl Sim {
                 texture: (visual.texture + noise(&mut rng, 0.03)).clamp01(),
                 gloss: (visual.gloss + noise(&mut rng, 0.03)).clamp01(),
                 flicker: visual.flicker,
+                motion: visual.motion,
+                face: visual.face,
             };
             let token = self.token(id, t);
             tokens.push((token, t));
@@ -1143,6 +1184,7 @@ impl Sim {
                 felt_warmth: (warmth + noise(&mut rng, 0.01)).clamp01(),
                 touch: c.touched.and_then(|(tt, f)| (tt == t).then_some(f)),
                 taste: c.tasted.and_then(|(tt, f)| (tt == t).then_some(f)),
+                touched_me: matches!(t, Target::Creature(cid) if c.touched_by.map(|(id, tk)| id == cid && self.tick <= tk + 1).unwrap_or(false)),
             });
         }
         percepts.sort_by_key(|p| p.token);
@@ -1189,6 +1231,77 @@ impl Sim {
         c.kind == Kind::Human
             && self.age_years(c) < fx(2.0)
             && c.mother.and_then(|m| self.creatures.iter().find(|x| x.id == m && x.alive)).is_some()
+    }
+
+    /// Walking to something seen: the body finds its way around obstacles
+    /// (a ridge, a pond, a bush in the way). Straight line when possible,
+    /// otherwise one step along the shortest walkable path (breadth-first,
+    /// within a local window), as a person walking around a lake would.
+    fn walk_toward(&mut self, i: usize, tx: i32, ty: i32) -> bool {
+        // Once a detour was needed for this destination, keep following the path.
+        let detouring = self.creatures[i].detour == Some((tx, ty));
+        if !detouring {
+            let (x, y) = (self.creatures[i].x, self.creatures[i].y);
+            let before = cheb(x, y, tx, ty);
+            if self.step_toward(i, tx, ty, true) {
+                if cheb(self.creatures[i].x, self.creatures[i].y, tx, ty) < before {
+                    return true;
+                }
+                // A sideways shuffle along an obstacle: undo it and plan a path instead.
+                self.creatures[i].x = x;
+                self.creatures[i].y = y;
+            }
+            self.creatures[i].detour = Some((tx, ty));
+        }
+        let (sx, sy) = (self.creatures[i].x, self.creatures[i].y);
+        let r = (cheb(sx, sy, tx, ty) + 10).min(40);
+        let (x0, y0) = (tx - r, ty - r);
+        let side = 2 * r + 1;
+        let idx = |x: i32, y: i32| ((y - y0) * side + (x - x0)) as usize;
+        let inside = |x: i32, y: i32| x >= x0 && y >= y0 && x < x0 + side && y < y0 + side;
+        let mut dist = vec![u16::MAX; (side * side) as usize];
+        let mut q = std::collections::VecDeque::new();
+        // Goal: any walkable cell next to the target.
+        for (dx, dy) in DIRS {
+            let (gx, gy) = (tx + dx, ty + dy);
+            if (gx, gy) == (sx, sy) || self.walkable(gx, gy) {
+                dist[idx(gx, gy)] = 0;
+                q.push_back((gx, gy));
+            }
+        }
+        while let Some((x, y)) = q.pop_front() {
+            if (x, y) == (sx, sy) {
+                break;
+            }
+            let nd = dist[idx(x, y)] + 1;
+            for (dx, dy) in DIRS {
+                let (nx, ny) = (x + dx, y + dy);
+                if !inside(nx, ny) || dist[idx(nx, ny)] <= nd {
+                    continue;
+                }
+                if (nx, ny) == (sx, sy) || self.walkable(nx, ny) {
+                    dist[idx(nx, ny)] = nd;
+                    q.push_back((nx, ny));
+                }
+            }
+        }
+        if !inside(sx, sy) || dist[idx(sx, sy)] == u16::MAX {
+            self.creatures[i].detour = None;
+            return false;
+        }
+        if dist[idx(sx, sy)] <= 1 {
+            self.creatures[i].detour = None;
+        }
+        let here = dist[idx(sx, sy)];
+        for (dx, dy) in DIRS {
+            let (nx, ny) = (sx + dx, sy + dy);
+            if inside(nx, ny) && dist[idx(nx, ny)] < here && self.walkable(nx, ny) {
+                self.creatures[i].x = nx;
+                self.creatures[i].y = ny;
+                return true;
+            }
+        }
+        false
     }
 
     fn step_toward(&mut self, i: usize, tx: i32, ty: i32, toward: bool) -> bool {
@@ -1286,6 +1399,22 @@ impl Sim {
             let mut mind = self.creatures[i].mind.take().expect("human has a mind");
             mind.trace_enabled = selected;
             let cmd = mind.step(&frame);
+            // Observer bookkeeping (for the inspector only): what this person's
+            // private concepts have actually been recognised on.
+            for &(tk, cid) in &mind.last_recognised {
+                let kind = self.creatures[i].tokens.iter().find(|(t, _)| *t == tk).map(|x| x.1).map(|t| self.target_kind(t));
+                if let Some(kind) = kind {
+                    let cs = &mut self.creatures[i].concept_seen;
+                    match cs.iter_mut().find(|(c, k, _)| *c == cid && *k == kind) {
+                        Some(e) => e.2 += 1,
+                        None => cs.push((cid, kind, 1)),
+                    }
+                }
+            }
+            if self.creatures[i].concept_seen.len() > 300 {
+                let live: Vec<u16> = mind.concepts.concepts.iter().map(|k| k.id).collect();
+                self.creatures[i].concept_seen.retain(|e| live.contains(&e.0));
+            }
             self.prof_sense_ns += (t1 - t0).as_nanos() as u64;
             self.prof_mind_ns += t1.elapsed().as_nanos() as u64;
             self.creatures[i].mind = Some(mind);
@@ -1301,6 +1430,43 @@ impl Sim {
         self.creatures[i].last_cmd = cmd;
         self.creatures[i].body.step();
         self.creatures[i].action = self.describe_action(i, cmd, res);
+    }
+
+    /// The true kind of a target, as the player would name it.
+    pub fn target_kind(&self, t: Target) -> &'static str {
+        match t {
+            Target::Water(..) => "water",
+            Target::Creature(id) => match self.creatures.iter().find(|c| c.id == id).map(|c| c.kind) {
+                Some(Kind::Human) => "person",
+                Some(Kind::Grazer) => "grazer",
+                Some(Kind::Predator) => "wolf",
+                None => "creature",
+            },
+            Target::Obj(id) => match self.objs.iter().find(|o| o.id == id).map(|o| o.kind) {
+                Some(ObjKind::BerryBush) => "berry bush",
+                Some(ObjKind::Tree) => "tree",
+                Some(ObjKind::Stone) => "stone",
+                Some(ObjKind::Flint) => "flint",
+                Some(ObjKind::Fire) => "fire",
+                Some(ObjKind::Carcass) => "carcass",
+                Some(ObjKind::Flake) => "sharp flake",
+                Some(ObjKind::Remains) => "remains",
+                None => "thing",
+            },
+        }
+    }
+
+    /// Observer name for one of a person's private concepts: what it has mostly
+    /// been recognised on ("berry bush", or "berry bush / tree" when it lumps them).
+    pub fn concept_meaning(&self, c: &Creature, cid: u16) -> Option<String> {
+        let mut v: Vec<(&'static str, u32)> = c.concept_seen.iter().filter(|e| e.0 == cid).map(|e| (e.1, e.2)).collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+        let total: u32 = v.iter().map(|x| x.1).sum();
+        let names: Vec<&str> = v.iter().take(3).filter(|x| x.1 * 5 >= total).map(|x| x.0).collect();
+        Some(names.join(" / "))
     }
 
     fn describe_action(&self, i: usize, cmd: MotorCommand, res: MotorResult) -> String {
@@ -1365,7 +1531,8 @@ impl Sim {
                 // Innate attachment prior (species-level, like the grazers' fear of wolves):
                 // undirected wandering drifts back toward a distant partner, or a young
                 // child's mother. Targeted actions are untouched; they are the mind's.
-                if let Some((ax, ay)) = self.attachment_figure(i) {
+                let needy = self.creatures[i].body.signals.hunger > fx(0.6) || self.creatures[i].body.signals.thirst > fx(0.6);
+                if let Some((ax, ay)) = self.attachment_figure(i).filter(|_| !needy) {
                     let (x, y) = (self.creatures[i].x, self.creatures[i].y);
                     let mut r = self.rng(self.creatures[i].id as u64, stream::PHYSICS ^ 0xA77A);
                     if cheb(ax, ay, x, y) > 5 && r.chance(fx(0.75)) && self.step_toward(i, ax, ay, true) {
@@ -1393,14 +1560,14 @@ impl Sim {
                 let d = cheb(self.creatures[i].x, self.creatures[i].y, tx, ty);
                 match cmd {
                     MotorCommand::Approach { .. } => {
-                        if d > 1 && !self.step_toward(i, tx, ty, true) {
+                        if d > 1 && !self.walk_toward(i, tx, ty) {
                             return MotorResult::Failed;
                         }
                         MotorResult::Ok
                     }
                     MotorCommand::Inspect { .. } => {
                         if d > 2 {
-                            self.step_toward(i, tx, ty, true);
+                            self.walk_toward(i, tx, ty);
                         } else if d < 2 {
                             self.step_toward(i, tx, ty, false);
                         }
@@ -1412,7 +1579,7 @@ impl Sim {
                     MotorCommand::Touch { .. } | MotorCommand::Mouth { .. } => {
                         let site = if matches!(cmd, MotorCommand::Touch { .. }) { Site::Hand } else { Site::Mouth };
                         if d > 1 {
-                            return if self.step_toward(i, tx, ty, true) { MotorResult::Ok } else { MotorResult::Failed };
+                            return if self.walk_toward(i, tx, ty) { MotorResult::Ok } else { MotorResult::Failed };
                         }
                         if prev_reach == Some((t, site)) {
                             self.contact(i, t, site);
@@ -1503,7 +1670,11 @@ impl Sim {
                 let kind = self.creatures[ci].kind;
                 self.creatures[i].touched = Some((t, Touch { thermal: fx(0.1), firmness: fx(0.3), wetness: Fx::ZERO }));
                 match kind {
-                    Kind::Human => self.social_contact(i, ci),
+                    // A hand laid on someone is social touch; a mouth on someone is not comforting.
+                    Kind::Human if site == Site::Hand => self.social_contact(i, ci),
+                    Kind::Human => {
+                        self.creatures[ci].touched_by = Some((self.creatures[i].id, self.tick));
+                    }
                     Kind::Grazer => {
                         let hp = (self.creatures[i].x, self.creatures[i].y);
                         let a = &mut self.creatures[ci].animal;
@@ -1511,8 +1682,12 @@ impl Sim {
                         a.flee_from = Some(hp);
                     }
                     Kind::Predator => {
-                        // Touching a wolf provokes a bite.
-                        self.creatures[i].body.wound(fx(0.2));
+                        // Touching a wolf provokes a bite on the hand (or face) that reached for it.
+                        if site == Site::Hand {
+                            self.creatures[i].body.cut_hand(fx(0.15));
+                        }
+                        self.creatures[i].body.wound(fx(0.1));
+                        self.creatures[i].touched_by = Some((cid, self.tick));
                         let name = self.creatures[i].name.clone();
                         let (wx, wy) = (self.creatures[ci].x, self.creatures[ci].y);
                         self.record("attack", format!("A wolf bit {name} who reached out to it."), wx, wy, false);
@@ -1551,6 +1726,7 @@ impl Sim {
     /// Two humans in touch: comfort, relationship change and sharing of what they know.
     fn social_contact(&mut self, i: usize, j: usize) {
         let (ai, bj) = (self.creatures[i].id, self.creatures[j].id);
+        self.creatures[j].touched_by = Some((ai, self.tick));
         self.creatures[i].social_comfort = Fx::ONE;
         self.creatures[j].social_comfort = Fx::ONE;
         // Relationship change and telling at most once per 10 minutes per pair.
@@ -1573,12 +1749,13 @@ impl Sim {
             let tick = self.tick;
             let accepted = self.creatures[j].mind.as_mut().map(|m| m.receive_told(cue, outcome, strength, trust, ai, tick)).unwrap_or(false);
             if accepted {
-                let what = self.creatures[i].mind.as_ref().map(|m| m.cue_name(cue as usize)).unwrap_or_default();
+                let raw = self.creatures[i].mind.as_ref().map(|m| m.cue_name(cue as usize)).unwrap_or_default();
+                let what = export::readable_cue(self, &self.creatures[i], &raw);
                 let out = ["pain", "food", "drink", "comfort", "warmth"][outcome as usize % 5];
                 let (na, nb) = (self.creatures[i].name.clone(), self.creatures[j].name.clone());
                 let (x, y) = (self.creatures[i].x, self.creatures[i].y);
-                self.first("told", format!("{na} passed knowledge to {nb} for the first time: things that are '{what}' mean {out}."), x, y);
-                self.record("knowledge", format!("{na} told {nb}: '{what}' means {out}."), x, y, false);
+                self.first("told", format!("{na} passed knowledge to {nb} for the first time: {what} mean {out}."), x, y);
+                self.record("knowledge", format!("{na} told {nb} that {what} mean {out}."), x, y, false);
             }
         }
     }
@@ -1739,10 +1916,10 @@ impl Sim {
                     }
                 } else if c.female && age >= fx(16.0) && age <= fx(44.0) {
                     if let Some(p) = c.partner {
-                        let close = self.creatures.iter().any(|o| o.id == p && o.alive && cheb(o.x, o.y, self.creatures[i].x, self.creatures[i].y) <= 3);
+                        let close = self.creatures.iter().any(|o| o.id == p && o.alive && cheb(o.x, o.y, self.creatures[i].x, self.creatures[i].y) <= 4);
                         let c = &mut self.creatures[i];
                         let fed = c.body.signals.hunger < fx(0.7);
-                        if close && fed && r.chance(fx(0.04) * (fx(0.5) + c.traits.fertility)) {
+                        if close && fed && r.chance(fx(0.06) * (fx(0.5) + c.traits.fertility)) {
                             c.pregnant = Some((p, self.tick + TICKS_PER_YEAR * 3 / 4));
                             let name = c.name.clone();
                             let (x, y) = (c.x, c.y);
@@ -1986,6 +2163,7 @@ impl Sim {
             self.creatures[i].animal.retreat_until = self.tick + 1800;
             self.creatures[i].animal.energy = (self.creatures[i].animal.energy + fx(0.05)).min(Fx::ONE);
             self.creatures[j].body.wound(fx(0.16));
+            self.creatures[j].touched_by = Some((self.creatures[i].id, self.tick));
             let name = self.creatures[j].name.clone();
             self.record("attack", format!("A wolf attacked {name}."), tx, ty, false);
             self.first("wolf-attack", format!("A wolf attacked a human for the first time: {name}."), tx, ty);
@@ -2129,6 +2307,7 @@ impl Sim {
 
     /// Applies a god power at a tile. Returns a short description of what happened.
     pub fn god(&mut self, power: &str, x: i32, y: i32) -> String {
+        self.journal.push(save::JournalEntry::God { tick: self.tick, power: power.to_string(), x, y });
         if !self.in_bounds(x, y) {
             return "outside the world".into();
         }
@@ -2287,6 +2466,14 @@ impl Sim {
     // ------------------------------------------------------------------ time & LOD
 
     /// Chooses cognitive detail for a game speed (multiples of 1 game minute per real second).
+    /// Which human is being watched (it thinks every second and records traces).
+    pub fn set_selected(&mut self, id: Option<u32>) {
+        if self.selected != id {
+            self.selected = id;
+            self.journal.push(save::JournalEntry::Select { tick: self.tick, id });
+        }
+    }
+
     pub fn set_speed_lod(&mut self, speed: u32) {
         let (h, a) = match speed {
             0..=5 => (1, 1),
@@ -2294,6 +2481,9 @@ impl Sim {
             26..=100 => (6, 4),
             _ => (20, 10),
         };
+        if (h, a) != (self.human_interval, self.animal_interval) {
+            self.journal.push(save::JournalEntry::Lod { tick: self.tick, speed });
+        }
         self.human_interval = h;
         self.animal_interval = a;
     }
@@ -2353,4 +2543,40 @@ pub fn rel_mut(v: &mut Vec<Relation>, other: u32) -> &mut Relation {
     }
     v.push(Relation { other, ..Default::default() });
     v.last_mut().unwrap()
+}
+
+#[cfg(test)]
+mod nav_tests {
+    use super::*;
+
+    /// A person walking to something on the far side of a lake goes around it
+    /// instead of getting stuck at the shore.
+    #[test]
+    fn walks_around_a_lake() {
+        let mut sim = Sim::new(3, 40, 30);
+        sim.objs.clear();
+        for y in 0..30 {
+            for x in 0..40 {
+                let t = sim.tile_mut(x, y);
+                t.biome = Biome::Grass;
+            }
+        }
+        // A lake wall from y=3 to y=26 at x=18..=21 (open at the top and bottom).
+        for y in 3..27 {
+            for x in 18..22 {
+                sim.tile_mut(x, y).biome = Biome::Water;
+            }
+        }
+        let i = sim.creatures.iter().position(|c| c.kind == Kind::Human).unwrap();
+        sim.creatures[i].x = 10;
+        sim.creatures[i].y = 15;
+        let (tx, ty) = (30, 15);
+        let mut steps = 0;
+        while cheb(sim.creatures[i].x, sim.creatures[i].y, tx, ty) > 1 && steps < 200 {
+            assert!(sim.walk_toward(i, tx, ty), "stuck at {},{}", sim.creatures[i].x, sim.creatures[i].y);
+            steps += 1;
+        }
+        assert!(cheb(sim.creatures[i].x, sim.creatures[i].y, tx, ty) <= 1, "never arrived");
+        assert!(steps < 60, "took {steps} steps");
+    }
 }

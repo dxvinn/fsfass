@@ -47,9 +47,14 @@ impl ConceptStore {
         ConceptStore { concepts: Vec::new(), vigilance, next_id: 1 }
     }
 
+    /// The pattern used for categories. Faces are a privileged innate dimension
+    /// (newborns sort the world into faces and non-faces before anything else);
+    /// motion is transient, so it counts for little in what a thing *is*.
     fn visual(u: &SenseVec) -> [Fx; N_VISUAL] {
         let mut v = [Fx::ZERO; N_VISUAL];
         v.copy_from_slice(&u[..N_VISUAL]);
+        v[crate::encode::U_FACE] = v[crate::encode::U_FACE] * fx(2.5);
+        v[crate::encode::U_MOVING] = v[crate::encode::U_MOVING] * fx(0.3);
         v
     }
 

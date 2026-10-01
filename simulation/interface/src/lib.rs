@@ -37,6 +37,11 @@ pub struct Visual {
     pub texture: Fx,
     /// Specular shine / wet look, 0..1.
     pub gloss: Fx,
+    /// Self-propelled movement seen in this thing (walking, breathing, turning), 0..1.
+    /// Motion detection is innate and works from birth.
+    pub motion: Fx,
+    /// Face-like pattern (two eyes above a mouth), 0..1. Newborns orient to faces innately.
+    pub face: Fx,
 }
 
 /// What the skin reports when it touches something.
@@ -76,6 +81,8 @@ pub struct Percept {
     pub touch: Option<Touch>,
     /// Present only if the perceiver mouthed this thing during the last tick.
     pub taste: Option<Taste>,
+    /// This thing touched the perceiver's skin during the last tick (being touched).
+    pub touched_me: bool,
 }
 
 /// Body signals (interoception), each 0..1.
