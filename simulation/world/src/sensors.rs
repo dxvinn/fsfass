@@ -65,6 +65,7 @@ pub fn sense(world: &World, ai: usize) -> SensoryFrame {
     SensoryFrame {
         tick: world.tick,
         asleep: a.body.asleep,
+        observations: Vec::new(),
         percepts,
         body: Interoception {
             hunger: s.hunger,

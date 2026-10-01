@@ -155,30 +155,23 @@ These changes were made, all in the world, none in the mind:
   fear of wolves. Targeted actions stay entirely the mind's. Without it, couples
   drifted 100+ tiles apart and conception almost never happened.
 
-## Known issues (honest; not fixed in this build)
+## Fixed in the second pass
 
-1. **Cognition (from Artificial Mind V0):** see `PHASE2_RESULTS.md`.
-   - C5 (time to first swallow) failed in P1, and C6 was never verified.
-   - Social comfort from being touched is credited to whatever the person
-     happened to be doing, so "touch it → comfort" links show up for rocks
-     and trees.
-   - People and objects share early concepts, so humans "taste" each other
-     and touch wolves (and get bitten).
-2. **Knowledge labels:** the Knowledge tab names cues by the mind's own
-   features ("concept C2", "lit>0.2", "still"). This is accurate, but often
-   not readable.
-3. **No human navigation help:** humans have no pathfinding beyond the mind's
-   approach and wander steps. Some die of thirst within sight of water across
-   a ridge.
-4. **Population is small and fragile:** 1–5 births per 16 years per seed in
-   headless runs. Bands can die out. No rebalancing of fertility was attempted.
-5. **1000× speed:** with 10–15 humans on a fast desktop CPU the simulation runs
-   about 800 game seconds per real second at full cognition. 1000× needs
-   reduced cognition, and software rendering in CI reaches only about 85×. The
-   bar reports this.
-6. **Visuals:** programmer art (procedurally drawn). The terrain is 8 px per
-   tile with bilinear blending and warp, so some tile structure is still visible.
-7. **Wolves** use simple innate rules, not a mind. Grazers too.
-8. **No save/load** yet.
-9. **Godot version:** built against API 4.4. It runs on 4.4 and newer; it was
-   tested on 4.4.1 only.
+- **Social credit:** comfort from being touched is credited to the toucher, not to whatever you were doing.
+- **People vs objects:** innate face and motion senses; people form their own category.
+- **Readable labels:** "Touching C5 (person) → comfort", "Putting C1 (water) in the mouth → drink".
+- **Navigation:** humans walk around lakes and ridges.
+- **Learning by watching:** children learn to eat and drink by watching adults.
+- **Nursing:** toddlers are carried until 3 and nursed until 5.
+- **Population:** 30 game days at 1000×, 7 seeds starting from 10 people: 16, 15, 4, 11, 10, 17 and 19 alive. Seed 42 did not finish. Most deaths were from old age.
+- **Visuals:** painted terrain at 16 px per tile, water shimmer, new sprites.
+- **Save/load:** Save and Load buttons (F5 / F9). A save is the world's seed plus a journal of outside actions. Loading replays it and is verified exactly.
+
+## Known issues (still open)
+
+1. **P1 criterion C5** (experienced children faster than naive ones to first swallow) is still FAIL: 6 s vs 6 s. The P1 report predates the last round of mind changes.
+2. **Overgeneralised beliefs:** people sometimes tell each other vague beliefs ("visible things mean drink").
+3. **Tasting other people** happens about 1–3% of the time in adults (down from 1.5–2.9%).
+4. **Tracing affects behaviour:** turning on decision traces (selecting a human) changes that human's think rate. A watched run therefore diverges from an unwatched one, although each is deterministic and save/load records the selection.
+5. **Loading time:** loading replays the whole history, so it takes longer the older the world is.
+6. Wolves and grazers use simple innate rules, not minds.

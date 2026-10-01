@@ -183,7 +183,7 @@ func _why_section(tr: Dictionary) -> void:
 	var assoc: Array = tr.get("associations", [])
 	if assoc.size() > 0:
 		var a = assoc[0]
-		var txt := "%s%s → %s" % ["" if a.action == null else str(a.action) + " + ", a.cue, a.outcome]
+		var txt := "%s%s → %s" % ["" if a.action == null else str(a.action) + " + ", _plain(str(a.cue)), _plain(str(a.outcome))]
 		w.add_child(UI.row("Expects", txt))
 	var opts: Array = tr.get("options", [])
 	if opts.size() > 1:
@@ -194,6 +194,20 @@ func _why_section(tr: Dictionary) -> void:
 	var learn: Array = tr.get("learning", [])
 	if learn.size() > 0:
 		w.add_child(UI.row("Learning", str(learn[0]), UI.GOOD))
+
+
+## Plain words for the mind's sensation labels (observer view).
+func _plain(t: String) -> String:
+	if t.begins_with("hue:"):
+		return t.substr(4) + " things"
+	var m := {"lit>0.2": "visible things", "bright>0.45": "bright things", "glaring>0.7": "glowing things",
+		"dark": "dark things", "colourless": "grey things", "face": "faces", "moving": "moving things",
+		"warmth>0.1": "slightly warm things", "warmth>0.3": "warm things", "warmth>0.5": "hot things",
+		"warmth>0.7": "very hot things", "warmth-felt": "warm things", "nutrient-intake": "food",
+		"fluid-intake": "drink", "still": "still things", "large": "large things", "small": "small things",
+		"medium": "medium-sized things", "round": "round things", "jagged": "jagged things",
+		"rough": "rough things", "smooth": "smooth things", "glossy": "glossy things", "matte": "matte things"}
+	return m.get(t, t)
 
 
 func _body() -> void:
@@ -230,6 +244,7 @@ func _brain() -> void:
 	var st := _section("Mind")
 	st.add_child(UI.row("Concepts formed", str(data.get("concepts", 0))))
 	st.add_child(UI.row("Episodes stored", str(data.get("episodes_stored", 0))))
+	st.add_child(UI.row("Learned by watching", "%d times" % int(data.get("observed", 0))))
 
 
 func _mono() -> Font:
@@ -250,19 +265,28 @@ func _memories() -> void:
 
 
 func _knowledge() -> void:
-	_add(UI.label("Things this person has learned through experience. Nothing here was given to them; every link was learned.", 11, UI.MUTED, true))
+	_add(UI.label("Things this person has learned through experience or by watching others. Nothing here was given to them; every link was learned. Labels in brackets are what the player can see the person's private categories really are.", 11, UI.MUTED, true))
 	var k: Array = data.get("knowledge", [])
 	if k.is_empty():
 		_add(UI.label("Has not learned anything yet.", 13, UI.MUTED))
 	for e in k:
-		var col := UI.COOL
 		var w: String = e.what
-		if w.contains("pain"):
+		var cue: String = e.cue
+		var text := ""
+		if w.begins_with("mean "):
+			text = "%s mean %s" % [cue.left(1).to_upper() + cue.substr(1), w.substr(5)]
+		elif w.begins_with("touch them"):
+			text = "Touching %s → %s" % [cue, w.get_slice("→ ", 1)]
+		elif w.begins_with("put in mouth them"):
+			text = "Putting %s in the mouth → %s" % [cue, w.get_slice("→ ", 1)]
+		else:
+			text = "%s → %s" % [cue, w]
+		var col := UI.COOL
+		if w.ends_with("pain"):
 			col = UI.BAD
-		elif w.contains("nourish") or w.contains("hydrat") or w.contains("warm") or w.contains("comfort"):
+		elif w.ends_with("food") or w.ends_with("drink") or w.ends_with("warmth") or w.ends_with("comfort"):
 			col = UI.GOOD
-		var p := UI.entry("%s  →  %s" % [e.cue, w], "strength %.2f · from %d experiences" % [float(e.strength), int(e.evidence)], col)
-		_add(p)
+		_add(UI.entry(text, "strength %.2f · from %d experiences" % [minf(float(e.strength), 1.0), int(e.evidence)], col))
 
 
 func _beliefs() -> void:

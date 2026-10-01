@@ -317,7 +317,7 @@ pub fn inspect_json(sim: &Sim, id: u32) -> String {
             let _ = write!(o, "{{\"belief\":{},\"confidence\":{},\"source\":{},\"evidence\":{}}}", q(&text), f(b.confidence), q(&src), b.evidence);
         }
         o.push_str("],");
-        let _ = write!(o, "\"concepts\":{},\"episodes_stored\":{},", m.concepts.concepts.len(), m.stats.episodes_stored);
+        let _ = write!(o, "\"concepts\":{},\"episodes_stored\":{},\"observed\":{},", m.concepts.concepts.len(), m.stats.episodes_stored, m.stats.observed);
         // Live decision trace (only recorded for the selected human).
         match &m.last_trace {
             Some(tr) if !tr.asleep => {
@@ -367,6 +367,8 @@ fn observer_names(sim: &Sim, c: &Creature, text: &str) -> String {
 /// "concept C12" -> "C12 (berry bush)": what this private category has really
 /// been recognised on so far (observer view).
 fn concept_names(sim: &Sim, c: &Creature, text: &str) -> String {
+    let owned = short_concepts(sim, c, &text.replace("nutrient-intake", "food").replace("fluid-intake", "drink"));
+    let text: &str = owned.as_str();
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(p) = rest.find("concept C") {
@@ -386,6 +388,37 @@ fn concept_names(sim: &Sim, c: &Creature, text: &str) -> String {
         rest = &after[digits.len()..];
     }
     out.push_str(rest);
+    out
+}
+
+/// Trace shorthand "C12@3m" / "C12 [..." -> "C12 (berry bush)@3m".
+fn short_concepts(sim: &Sim, c: &Creature, text: &str) -> String {
+    let b = text.as_bytes();
+    let mut out = String::with_capacity(text.len() + 32);
+    let mut i = 0;
+    while i < b.len() {
+        let start_ok = i == 0 || !(b[i - 1] as char).is_ascii_alphanumeric();
+        if text.is_char_boundary(i) && b[i] == b'C' && start_ok && i + 1 < b.len() && b[i + 1].is_ascii_digit() && !text[..i].ends_with("concept ") {
+            let mut j = i + 1;
+            while j < b.len() && b[j].is_ascii_digit() {
+                j += 1;
+            }
+            let next_ok = j < b.len() && (b[j] == b'@' || (b[j] == b' ' && j + 1 < b.len() && b[j + 1] == b'['));
+            if next_ok {
+                let id: u16 = text[i + 1..j].parse().unwrap_or(0);
+                out.push_str(&text[i..j]);
+                if let Some(m) = sim.concept_meaning(c, id) {
+                    out.push_str(&format!(" ({m})"));
+                }
+                i = j;
+                continue;
+            }
+        }
+        // Copy one whole UTF-8 character.
+        let ch = text[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
     out
 }
 

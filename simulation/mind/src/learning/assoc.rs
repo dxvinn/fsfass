@@ -26,6 +26,10 @@ pub const O_NOURISH: usize = 1;
 pub const O_HYDRATE: usize = 2;
 /// Comforting social contact (innate affiliation signal).
 pub const O_SOCIAL: usize = 3;
+/// Associative strength saturates (a cue cannot predict an outcome more than
+/// this strongly); this also stops acquisition in one context and extinction in
+/// another from ratcheting stored weights upward without limit.
+pub const W_MAX: Fx = Fx::ratio(3, 2);
 /// Relief from cold (warming up).
 pub const O_WARM: usize = 4;
 pub const N_ACT: usize = 6;
@@ -318,6 +322,9 @@ impl Assoc {
                     let before = self.inst_net(action, c, o, ctx);
                     let dw = rate * delta * cue_salience(c) * x[c] / n2;
                     self.inst_fast[ai(action, c)][o] += dw;
+                    let slow = self.inst_slow[ai(action, c)][o];
+                    let f = &mut self.inst_fast[ai(action, c)][o];
+                    *f = (*f).min(W_MAX - slow);
                     // Re-acquisition also weakens the extinction memory for this context.
                     let e = &mut self.inst_ext[aci(action, c, ctx)][o];
                     *e = (*e - dw).max(Fx::ZERO);
@@ -392,6 +399,7 @@ impl Assoc {
                     let before = self.pav_net(c, o, ctx);
                     let dw = rate * delta * cue_salience(c) * x[c] / n2;
                     self.pav_fast[c][o] += dw;
+                    self.pav_fast[c][o] = self.pav_fast[c][o].min(W_MAX - self.pav_slow[c][o]);
                     let ex = &mut self.pav_ext[ci(c, ctx)][o];
                     *ex = (*ex - dw).max(Fx::ZERO);
                     self.push_change(&mut rep, "pavlovian", None, c, o, before, x[c]);
@@ -429,6 +437,7 @@ impl Assoc {
                 continue;
             }
             self.pav_fast[c][o] += rate * delta * cue_salience(c) * x[c] / n2;
+            self.pav_fast[c][o] = self.pav_fast[c][o].min(W_MAX - self.pav_slow[c][o]);
         }
         delta
     }
@@ -526,12 +535,12 @@ impl Assoc {
             let mut moved = Fx::ZERO;
             for o in 0..N_OUT {
                 let f = self.pav_fast[c][o];
-                self.pav_slow[c][o] = self.pav_slow[c][o] * keep + f * rho;
+                self.pav_slow[c][o] = (self.pav_slow[c][o] * keep + f * rho).min(W_MAX);
                 self.pav_fast[c][o] = f * fx(0.25);
                 moved += (f * rho).abs();
                 for a in 0..N_ACT {
                     let f = self.inst_fast[ai(a, c)][o];
-                    self.inst_slow[ai(a, c)][o] = self.inst_slow[ai(a, c)][o] * keep + f * rho;
+                    self.inst_slow[ai(a, c)][o] = (self.inst_slow[ai(a, c)][o] * keep + f * rho).min(W_MAX);
                     self.inst_fast[ai(a, c)][o] = f * fx(0.25);
                     moved += (f * rho).abs();
                     for ctx in 0..N_CTX {

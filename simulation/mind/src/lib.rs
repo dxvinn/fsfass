@@ -117,6 +117,8 @@ pub struct MindStats {
     pub pavlovian_events: u64,
     pub episodes_stored: u64,
     pub consolidations: u64,
+    /// Times something was learned by watching another.
+    pub observed: u64,
 }
 
 /// Per-percept state for the current cycle.
@@ -359,6 +361,31 @@ impl Mind {
                 ev: [Fx::ZERO; N_ACT],
             });
         }
+        // Learning by watching: someone in view put a thing in their mouth and
+        // swallowed it, or jerked back from it. What is seen is credited to that
+        // thing for that act, more weakly than one's own experience.
+        for ob in &f.observations {
+            let Some(k) = ps.iter().position(|q| q.token == ob.target) else { continue };
+            let mut seen = [Fx::ZERO; N_OUT];
+            if ob.chewed {
+                seen[O_NOURISH] = fx(0.5);
+            }
+            if ob.drank {
+                seen[O_HYDRATE] = fx(0.5);
+            }
+            if ob.recoiled {
+                seen[O_PAIN] = fx(0.5);
+            }
+            let act = if ob.mouth { A_MOUTH } else { A_TOUCH };
+            let cue = ps[k].cue;
+            self.assoc.learn_instrumental(&self.params, act, &cue, &seen, ctx, fx(0.3), &AVERSIVE);
+            if ob.recoiled {
+                self.assoc.learn_instrumental(&self.params, A_CONTACT, &cue, &seen, ctx, fx(0.3), &AVERSIVE);
+            }
+            self.stats.observed += 1;
+            let what = if ob.chewed { "eat" } else if ob.drank { "drink from" } else { "get hurt by" };
+            self.last_learning.push(format!("watched someone {what} [{}]", describe(&ps[k].sense, 4).join(", ")));
+        }
         let valence = drives::innate_valence(&f.body);
         for q in ps.iter_mut() {
             q.pav = self.assoc.predict_pav(&q.cue, ctx);
@@ -521,8 +548,8 @@ impl Mind {
         };
         // Need-driven search: hungry or thirsty with nothing in view that I know
         // would satisfy it, going elsewhere is worth something (area-restricted search).
-        let nourishing_in_view = ps.iter().any(|q| q.pred[A_MOUTH][O_NOURISH] > fx(0.1));
-        let quenching_in_view = ps.iter().any(|q| q.pred[A_MOUTH][O_HYDRATE] > fx(0.1));
+        let nourishing_in_view = ps.iter().any(|q| q.pred[A_MOUTH][O_NOURISH] > fx(0.3));
+        let quenching_in_view = ps.iter().any(|q| q.pred[A_MOUTH][O_HYDRATE] > fx(0.3));
         let search = ((if nourishing_in_view { Fx::ZERO } else { f.body.hunger }) + (if quenching_in_view { Fx::ZERO } else { f.body.thirst })).min(Fx::ONE);
         let bored = Fx::ONE - attended.iter().map(|&i| ps[i].salience).fold(Fx::ZERO, |m, s| m.max(s)).min(Fx::ONE);
         for cmd in [MotorCommand::Wander { dir: wander_dir }, MotorCommand::Rest] {
@@ -531,8 +558,10 @@ impl Mind {
             let deliberate = if matches!(cmd, MotorCommand::Rest) {
                 f.body.fatigue * fx(0.15) + f.body.pain * fx(0.2)
             } else {
-                fx(0.04) * bored * self.params.curiosity + fx(0.15) * search
+                fx(0.04) * bored * self.params.curiosity
             };
+            // Foraging restlessness is innate (not subject to deliberate/habit arbitration).
+            let restless = if matches!(cmd, MotorCommand::Wander { .. }) { fx(0.35) * search } else { Fx::ZERO };
             let persistence = if last_cmd.map(|c| std::mem::discriminant(&c)) == Some(std::mem::discriminant(&cmd)) {
                 self.params.persistence * fx(0.5)
             } else {
@@ -547,7 +576,7 @@ impl Mind {
                 pred: [Fx::ZERO; N_OUT],
                 deliberate,
                 habit,
-                gut: Fx::ZERO,
+                gut: restless,
                 curiosity: Fx::ZERO,
                 persistence,
                 noise,
@@ -561,7 +590,8 @@ impl Mind {
         // would otherwise beat resting almost always (expected max of n Gaussians
         // ~ sqrt(2 ln n)), and an idle person would act on whatever is nearest.
         let n = Fx::from_int(opts.len().max(2) as i64);
-        let default_bonus = temp * (n.ln_fast().muli(2)).sqrt() * fx(0.8);
+        let need = f.body.hunger.max(f.body.thirst);
+        let default_bonus = temp * (n.ln_fast().muli(2)).sqrt() * fx(0.8) * (Fx::ONE - need).clamp01();
         for o in opts.iter_mut() {
             if matches!(o.cmd, MotorCommand::Rest) {
                 o.persistence += default_bonus;
@@ -728,10 +758,19 @@ impl Mind {
         // Outcome-specific transfer: a cue that predicts nutrient or fluid intake invites the
         // mouth; one that predicts comfort invites approach and touch, not tasting.
         let v = drives::innate_valence(&f.body);
-        let ingestive = q.pav[O_NOURISH] * v[O_NOURISH] + q.pav[O_HYDRATE] * v[O_HYDRATE] + q.pav[O_PAIN] * v[O_PAIN];
+        // The urge to put something in the mouth comes from what mouthing *that* has
+        // yielded (a person who predicts a meal is a reason to stay near them, not to bite them).
+        let pm = q.pred[A_MOUTH];
+        let ingestive = pm[O_NOURISH].min(q.pav[O_NOURISH].max(pm[O_NOURISH] * fx(0.5))) * v[O_NOURISH]
+            + pm[O_HYDRATE].min(q.pav[O_HYDRATE].max(pm[O_HYDRATE] * fx(0.5))) * v[O_HYDRATE]
+            + q.pav[O_PAIN] * v[O_PAIN];
+        // Touch is drawn by what the thing promises apart from eating and drinking
+        // (comfort, warmth, or harm); approach by the best of what could be done on arrival.
+        let non_ingestive = q.pav_value - (q.pav[O_NOURISH] * v[O_NOURISH] + q.pav[O_HYDRATE] * v[O_HYDRATE]);
         let gut = match a {
-            A_APPROACH | A_TOUCH => k * q.pav_value,
+            A_TOUCH => k * non_ingestive,
             A_MOUTH => k * ingestive,
+            A_APPROACH => k * ingestive.max(non_ingestive) * fx(0.8),
             A_INSPECT => k * q.pav_value * fx(0.3),
             A_WITHDRAW => {
                 // Pulling away from the thing that is hurting right now (acute pain on contact).

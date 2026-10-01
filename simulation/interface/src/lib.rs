@@ -85,6 +85,20 @@ pub struct Percept {
     pub touched_me: bool,
 }
 
+/// Another creature seen putting something in its mouth or touching it.
+/// Only what is visible: which thing, and whether it chewed and swallowed,
+/// drank (lapping, gulping), or jerked back as if hurt.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Observation {
+    pub actor: Token,
+    pub target: Token,
+    /// True for a mouth act, false for a hand act.
+    pub mouth: bool,
+    pub chewed: bool,
+    pub drank: bool,
+    pub recoiled: bool,
+}
+
 /// Body signals (interoception), each 0..1.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Interoception {
@@ -140,6 +154,8 @@ pub struct SensoryFrame {
     pub tick: u64,
     pub asleep: bool,
     pub percepts: Vec<Percept>,
+    /// Others seen acting on things this moment, with what could be seen of the result.
+    pub observations: Vec<Observation>,
     pub body: Interoception,
     pub ambient: Ambient,
     pub last_result: MotorResult,

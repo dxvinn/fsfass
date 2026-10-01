@@ -15,6 +15,7 @@ fn main() {
     let secs: u64 = std::env::var("SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(3600);
     let stats = std::env::var_os("STATS").is_some();
     let mut why_printed = 0;
+    let mut hungry_acts: std::collections::BTreeMap<String, u64> = Default::default();
     let mut mouth_human_adult = 0u64;
     let mut who_mouths: std::collections::BTreeMap<String, u64> = Default::default();
     let (mut mouth_human, mut mouth_obj, mut touch_wolf, mut touch_human, mut samples) = (0u64, 0u64, 0u64, 0u64, 0u64);
@@ -22,19 +23,35 @@ fn main() {
         for t in 0..secs {
             sim.step();
             if let Ok(who) = std::env::var("WHY_MOUTH") {
-                let id = sim.creatures.iter().find(|c| c.name == who).map(|c| c.id);
-                if id.is_some() && sim.selected != id {
-                    sim.set_selected(id);
+                if std::env::var_os("TRACE_ALL").is_some() {
+                    sim.trace_all = true;
+                } else {
+                    let id = sim.creatures.iter().find(|c| c.name == who).map(|c| c.id);
+                    if id.is_some() && sim.selected != id {
+                        sim.set_selected(id);
+                    }
                 }
                 if let Some(c) = sim.creatures.iter().find(|c| c.name == who) {
                     let a = &c.action;
                     let humans: Vec<&str> = sim.creatures.iter().filter(|o| o.kind == Kind::Human).map(|o| o.name.as_str()).collect();
-                    if (a.starts_with("tasting ") || a.starts_with("bringing ")) && humans.iter().any(|n| a.contains(n)) && why_printed < 3 && t % 97 == 0 && h >= std::env::var("WHY_AFTER").ok().and_then(|v| v.parse().ok()).unwrap_or(0u64) {
+                    let hungry_mode = std::env::var_os("WHY_HUNGRY").is_some();
+                    let hit = if hungry_mode {
+                        (if std::env::var_os("WHY_THIRST").is_some() { c.body.signals.thirst } else { c.body.signals.hunger }).to_f64() > 0.7 && !c.body.asleep
+                    } else {
+                        (a.starts_with("tasting ") || a.starts_with("bringing ")) && humans.iter().any(|n| a.contains(n))
+                    };
+                    if hit && why_printed < 3 && t % 97 == 0 && h >= std::env::var("WHY_AFTER").ok().and_then(|v| v.parse().ok()).unwrap_or(0u64) {
                         why_printed += 1;
                         if let Some(tr) = c.mind.as_ref().and_then(|m| m.last_trace.as_ref()) {
                             println!("==== WHY {} {}\n{}", a, export::clock(&sim), tr.to_text());
                         }
                     }
+                }
+            }
+            if std::env::var_os("HUNGRY_ACTS").is_some() && t % 30 == 0 {
+                for c in sim.creatures.iter().filter(|c| c.alive && c.kind == Kind::Human && c.body.signals.hunger.to_f64() > 0.6) {
+                    let verb: String = c.action.split_whitespace().next().unwrap_or("").to_string();
+                    *hungry_acts.entry(verb).or_insert(0u64) += 1;
                 }
             }
             if stats && t % 10 == 0 {
@@ -91,6 +108,18 @@ fn main() {
                 .map(|c| format!("{}({:.0}) h{:.2} t{:.2} {}", c.name, sim.age_years(c).to_f64(), c.body.signals.hunger.to_f64(), c.body.signals.thirst.to_f64(), c.action))
                 .collect();
             println!("[{}] {}", export::clock(&sim), humans.join(" | "));
+            if std::env::var_os("FOOD").is_some() {
+                let bushes: Vec<&genesis_sim::Obj> = sim.objs.iter().filter(|o| o.alive && o.kind == genesis_sim::ObjKind::BerryBush).collect();
+                let portions: i64 = bushes.iter().map(|o| o.props.portions as i64).sum();
+                let hs: Vec<&genesis_sim::Creature> = sim.creatures.iter().filter(|c| c.alive && c.kind == Kind::Human).collect();
+                let near: i64 = bushes
+                    .iter()
+                    .filter(|o| hs.iter().any(|c| genesis_sim::cheb(c.x, c.y, o.x, o.y) <= 12))
+                    .map(|o| o.props.portions as i64)
+                    .sum();
+                let mean_h = hs.iter().map(|c| c.body.signals.hunger.to_f64()).sum::<f64>() / hs.len().max(1) as f64;
+                println!("FOOD {} season {} bushes {} portions {} near-humans {} mean-hunger {:.2}", export::clock(&sim), sim.season(), bushes.len(), portions, near, mean_h);
+            }
         }
     }
     if std::env::var_os("KNOW").is_some() {
@@ -101,6 +130,9 @@ fn main() {
                 println!("KNOW {}: {}", c.name, &j[k..end]);
             }
         }
+    }
+    if !hungry_acts.is_empty() {
+        println!("HUNGRY_ACTS {:?}", hungry_acts);
     }
     if stats {
         println!("STATS adult mouthers {:?}", who_mouths);
@@ -153,6 +185,7 @@ fn clone_shell(s: &Sim) -> Sim {
         prof_mind_ns: 0,
         water_dist: Vec::new(),
         journal: Vec::new(),
+        trace_all: false,
         prof_rest_ns: 0,
     }
 }

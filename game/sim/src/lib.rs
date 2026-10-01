@@ -15,7 +15,7 @@ pub mod terrain;
 use alife_biology::{Body, Site};
 use alife_core::rng::{key4, stream};
 use alife_core::{fx, Fx, Rng};
-use alife_interface::{Ambient, Interoception, MotorCommand, MotorResult, Percept, SensoryFrame, Taste, Token, Touch, Visual};
+use alife_interface::{Ambient, Interoception, MotorCommand, MotorResult, Observation, Percept, SensoryFrame, Taste, Token, Touch, Visual};
 use alife_mind::params::{MindParams, Personality};
 use alife_mind::Mind;
 use alife_world::ObjProps;
@@ -123,6 +123,9 @@ pub struct Creature {
     pub moved_tick: u64,
     /// Destination currently being reached by a planned detour (body-level navigation).
     pub detour: Option<(i32, i32)>,
+    /// What this creature visibly did last (for others to watch): target, mouth?,
+    /// chewed, drank, recoiled, tick.
+    pub display: Option<(Target, bool, bool, bool, bool, u64)>,
     /// Observer statistics: (private concept id, true kind of thing, times recognised).
     pub concept_seen: Vec<(u16, &'static str, u32)>,
     pub last_contact: Option<Target>,
@@ -202,6 +205,8 @@ pub struct Sim {
     pub water_dist: Vec<u16>,
     /// Everything that came from outside the simulation, for save/load replay.
     pub journal: Vec<save::JournalEntry>,
+    /// Debug: record decision traces for every human (does not change behaviour).
+    pub trace_all: bool,
 }
 
 fn props_for(kind: ObjKind) -> ObjProps {
@@ -368,6 +373,7 @@ impl Sim {
             prof_mind_ns: 0,
             water_dist: Vec::new(),
             journal: Vec::new(),
+            trace_all: false,
             prof_rest_ns: 0,
         };
         s.populate();
@@ -619,6 +625,7 @@ impl Sim {
             touched_by: None,
             moved_tick: 0,
             detour: None,
+            display: None,
             concept_seen: Vec::new(),
             last_contact: None,
             last_result: MotorResult::Ok,
@@ -691,6 +698,7 @@ impl Sim {
             touched_by: None,
             moved_tick: 0,
             detour: None,
+            display: None,
             concept_seen: Vec::new(),
             last_contact: None,
             last_result: MotorResult::Ok,
@@ -1121,7 +1129,9 @@ impl Sim {
                     let (hue, sat) = if o.kind == ObjKind::BerryBush {
                         let full = Fx::ratio(p.portions.max(0) as i64, p.max_portions.max(1) as i64);
                         let berry = (full * fx(3.0)).min(Fx::ONE);
-                        (fx(110.0) + (p.hue_deg - fx(110.0)) * berry, fx(0.45) + (p.saturation - fx(0.45)) * berry)
+                        // Short way round the colour wheel: green leaves -> yellow -> berry red.
+                        let target = if p.hue_deg > fx(180.0) { p.hue_deg - fx(360.0) } else { p.hue_deg };
+                        (wrap(fx(110.0) + (target - fx(110.0)) * berry), fx(0.45) + (p.saturation - fx(0.45)) * berry)
                     } else {
                         (p.hue_deg, p.saturation)
                     };
@@ -1195,10 +1205,29 @@ impl Sim {
             Biome::Hills => fx(0.55),
             _ => fx(0.4),
         };
+        // Watching others: a person in view who just ate, drank or jerked back from
+        // something that is also in view.
+        let mut observations = Vec::new();
+        let mut watched: Option<(String, &str)> = None;
+        for &(tk, t) in &tokens {
+            let Target::Creature(cid) = t else { continue };
+            let Some(o) = self.creatures.iter().find(|o| o.id == cid && o.kind == Kind::Human) else { continue };
+            let Some((target, mouth, chewed, drank, recoiled, when)) = o.display else { continue };
+            if when + 2 < self.tick || !(chewed || drank || recoiled) {
+                continue;
+            }
+            if let Some(&(ttk, _)) = tokens.iter().find(|(_, tt)| *tt == target) {
+                observations.push(Observation { actor: tk, target: ttk, mouth, chewed, drank, recoiled });
+                if chewed || drank {
+                    watched = Some((o.name.clone(), if chewed { "eat" } else { "drink" }));
+                }
+            }
+        }
         let frame = SensoryFrame {
             tick: self.tick,
             asleep: c.body.asleep,
             percepts,
+            observations,
             body: Interoception {
                 hunger: s.hunger,
                 thirst: s.thirst,
@@ -1223,13 +1252,17 @@ impl Sim {
             },
             last_result: c.last_result,
         };
+        if let Some((who, what)) = watched {
+            let me = self.creatures[i].name.clone();
+            self.first("watch", format!("{me} watched {who} {what} — the first lesson learned by watching."), cx, cy);
+        }
         self.creatures[i].tokens = tokens;
         frame
     }
 
     fn is_carried(&self, c: &Creature) -> bool {
         c.kind == Kind::Human
-            && self.age_years(c) < fx(2.0)
+            && self.age_years(c) < fx(3.0)
             && c.mother.and_then(|m| self.creatures.iter().find(|x| x.id == m && x.alive)).is_some()
     }
 
@@ -1348,8 +1381,17 @@ impl Sim {
                 let (mx, my) = (self.creatures[mi].x, self.creatures[mi].y);
                 self.creatures[i].x = mx;
                 self.creatures[i].y = my;
-                if self.tick % 1800 == 0 && self.creatures[i].body.signals.hunger > fx(0.3) {
-                    self.creatures[i].body.ingest(fx(45.0), fx(40.0));
+            }
+        }
+        // Nursing: a child under five next to its living mother is breastfed
+        // when hungry or thirsty (weaning is gradual in foraging societies).
+        if self.tick % 1800 == 0 && self.creatures[i].kind == Kind::Human && self.age_years(&self.creatures[i]) < fx(5.0) {
+            let sig = self.creatures[i].body.signals;
+            if sig.hunger > fx(0.3) || sig.thirst > fx(0.3) {
+                let (cx, cy) = (self.creatures[i].x, self.creatures[i].y);
+                let mother = self.creatures[i].mother;
+                if let Some(mi) = self.creatures.iter().position(|c| Some(c.id) == mother && c.alive && cheb(c.x, c.y, cx, cy) <= 2) {
+                    self.creatures[i].body.ingest(fx(45.0), fx(60.0));
                     self.creatures[mi].body.energy -= fx(45.0);
                 }
             }
@@ -1397,7 +1439,7 @@ impl Sim {
             let frame = self.sense_human(i);
             let t1 = std::time::Instant::now();
             let mut mind = self.creatures[i].mind.take().expect("human has a mind");
-            mind.trace_enabled = selected;
+            mind.trace_enabled = selected || self.trace_all;
             let cmd = mind.step(&frame);
             // Observer bookkeeping (for the inspector only): what this person's
             // private concepts have actually been recognised on.
@@ -1516,6 +1558,16 @@ impl Sim {
             self.creatures[i].reaching = None;
             return MotorResult::Overridden;
         }
+        // Innate following: a small child that has strayed from its mother goes back to her
+        // (toddlers keep their mothers in sight before they can fend for themselves).
+        if self.age_years(&self.creatures[i]) < fx(5.0) {
+            if let Some((mx, my)) = self.creatures[i].mother.and_then(|m| self.creatures.iter().find(|c| c.id == m && c.alive)).map(|c| (c.x, c.y)) {
+                if cheb(mx, my, self.creatures[i].x, self.creatures[i].y) > 4 && self.walk_toward(i, mx, my) {
+                    self.creatures[i].reaching = None;
+                    return MotorResult::Overridden;
+                }
+            }
+        }
         let sig = self.creatures[i].body.signals;
         if sig.reflex_hand || sig.reflex_mouth {
             self.creatures[i].reaching = None;
@@ -1535,7 +1587,10 @@ impl Sim {
                 if let Some((ax, ay)) = self.attachment_figure(i).filter(|_| !needy) {
                     let (x, y) = (self.creatures[i].x, self.creatures[i].y);
                     let mut r = self.rng(self.creatures[i].id as u64, stream::PHYSICS ^ 0xA77A);
-                    if cheb(ax, ay, x, y) > 5 && r.chance(fx(0.75)) && self.step_toward(i, ax, ay, true) {
+                    // Small children stay within arm's reach of their mother; others drift back.
+                    let small = self.age_years(&self.creatures[i]) < fx(6.0);
+                    let (leash, pull) = if small { (2, Fx::ONE) } else { (5, fx(0.75)) };
+                    if cheb(ax, ay, x, y) > leash && r.chance(pull) && self.walk_toward(i, ax, ay) {
                         return MotorResult::Ok;
                     }
                 }
@@ -1601,6 +1656,8 @@ impl Sim {
         let hid = self.creatures[i].id;
         match t {
             Target::Water(_, _) => {
+                let tick = self.tick;
+                self.creatures[i].display = Some((t, site == Site::Mouth, false, site == Site::Mouth, false, tick));
                 let body = &mut self.creatures[i].body;
                 body.contact(site, fx(15.0), fx(0.8));
                 if site == Site::Mouth {
@@ -1616,6 +1673,13 @@ impl Sim {
                 let kind = self.objs[oi].kind;
                 let (ox, oy) = (self.objs[oi].x, self.objs[oi].y);
                 self.creatures[i].body.contact(site, p.temp_c, p.conduct);
+                {
+                    // What a watcher would see: chewing and swallowing, drinking, or a jerk back from heat.
+                    let swallow = site == Site::Mouth && (p.liquid || (p.hardness < fx(0.5) && p.portions != 0 && p.size < fx(0.5)));
+                    let recoil = p.temp_c > fx(45.0);
+                    let tick = self.tick;
+                    self.creatures[i].display = Some((t, site == Site::Mouth, swallow && !p.liquid, swallow && p.liquid, recoil, tick));
+                }
                 if kind == ObjKind::Fire {
                     let name = self.creatures[i].name.clone();
                     self.first(&format!("burn-{}", hid), format!("{name} was burned by fire."), ox, oy);
