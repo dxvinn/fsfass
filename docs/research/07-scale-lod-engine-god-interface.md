@@ -426,14 +426,14 @@ Hot-path arithmetic: a 48-byte hot record × 1M agents = 48 MB. At a realistic ~
 
 ### Space Station 14 / RobustToolbox
 - URL: https://github.com/space-wizards/RobustToolbox
-- License: MIT (engine) per page shows GPL-3.0 and MIT entries; treat engine as MIT, content repo separately **(verify)**
+- License: the fetched page lists both MIT and GPL-3.0 license files **(exact split unverified; check before reusing any code)**
 - Language: C#
 - Activity/maintenance: very active (~695 stars engine; the content repo is larger).
 - Architecture (concrete): a C# ECS engine with client/server and **ViewVariables (VV)**, a runtime inspector to view and edit any entity/component field by reflection, remotely on the server.
 - Concept: multiplayer simulation-heavy roleplay game.
 - Computational cost / performance characteristics: server ticks a large ECS with dozens of players.
 - What we can learn: **reflection-driven, remote, editable inspector** with permissions. The god inspector should be generated from component metadata, not hand-written per field.
-- What we could integrate: if MIT is confirmed for the engine, code ideas for reflection-based VV; otherwise design.
+- What we could integrate: design of the reflection-based VV inspector; code only after the license split is confirmed.
 - What we should NOT integrate: content (licensing mix).
 - Scalability: server-scale entity counts.
 
@@ -664,7 +664,7 @@ Hot-path arithmetic: a 48-byte hot record × 1M agents = 48 MB. At a realistic ~
 
 ### Tracy Profiler
 - URL: https://github.com/wolfpld/tracy
-- License: BSD-3-Clause per repository **(page said BSD 2-/3-clause; verify)** [PERMISSIVE]
+- License: BSD (the fetched page indicated BSD 2-Clause; verify exact variant) [PERMISSIVE]
 - Language: C++ (Rust bindings `tracy-client`, Zig, C#)
 - Activity/maintenance: very active (~16.8k stars).
 - Architecture (concrete): nanosecond-resolution instrumented zones + sampling, remote telemetry, GPU zones (Vulkan/D3D/Metal/CUDA/WebGPU), memory and lock profiling, frame images.
