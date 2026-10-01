@@ -574,7 +574,7 @@ blocking, extinction and renewal like a spiking amygdala does?"), not for runnin
 
 ### Intrinsic Curiosity Module (pathak22/noreward-rl)
 - URL: https://github.com/pathak22/noreward-rl
-- License: MIT (per repo LICENSE file listing)
+- License: MIT (LICENSE file present per page summary; licence text not read directly — treat as likely MIT)
 - Language: Python (TensorFlow 1)
 - Activity/maintenance: archival (10 commits, 2017 paper code); ~1.5k stars
 - Architecture: Pathak et al. 2017 (ICML). Learn a feature encoder φ via an *inverse model* (predict action
