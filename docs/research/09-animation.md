@@ -610,3 +610,95 @@ Principle: **the simulation is the only source of truth; animation is a pure, lo
 - Time-scaling: when the god runs the world at 10×–1000×, animation tiers drop automatically (at 100× nobody sees gait), and tags are interpolated or sampled.
 - Determinism: animation randomness (idle fidgets, phase offsets) is seeded from agent id so replays look the same but nobody depends on it.
 
+---
+
+## Recommended animation architecture for our game
+
+### 1. The sim → animation semantic interface (Animation Intent Record, AIR)
+
+Emitted by the sim per agent when it changes (event-driven) plus a cheap per-tick transform. Kept small (≈16–48 bytes packed) so it can live in a GPU buffer for the crowd tiers.
+
+**Body descriptors (slow-changing; set at birth, updated on aging/injury):**
+- `species` / `body_plan` (biped, quadruped, hexapod, octopod, serpentine, avian, fish, plant)
+- `age_norm` (0 = newborn … 1 = species max age) and derived `life_stage` (infant, toddler, child, adolescent, adult, elder)
+- `height`, `limb_ratio`, `build` (lean↔heavy), `mass`, `sex/morph` (cosmetic), `pregnancy` 0–1
+- `injury[]`: {`part` (leg_L, leg_R, arm_L, arm_R, spine, head, wing_L…), `kind` (fracture, wound, missing, burn), `severity` 0–1}
+- `appearance`: palette genes, pelt/hair pattern ids, clothing/equipment layer ids, scars
+
+**Locomotion (per tick):** `velocity` (vector), `desired_path` (next 2–3 waypoints, for trajectory-matching/foot prediction), `gait_hint` (auto | sneak | walk | trot | run | gallop | swim | fly | crawl | hop), `terrain` (ground/water/snow/mud — for footprints and gait), `stance` (stand, crouch, sit, lie, prone)
+
+**Action (event):** `action` ∈ {idle, eat, drink, sleep, work(tool, verb: chop/dig/hammer/plant/harvest/cook/craft), carry(object/child, mode: arms/back/shoulder/sling/mouth), pick_up, put_down, give, hunt_stalk, pounce, attack(target, kind), block, flee, fall, die, mate/court(display_kind), nurse/feed_young, groom, play, talk(target, tone), pray/worship(god), mourn(target), celebrate, build(structure)}, with `target_id`/`target_pos`, `start_time`, `duration`, and `contact_time` (when the gameplay effect happens — animation must hit it).
+
+**Affect/condition modifiers (continuous 0–1):** `valence`, `arousal`, `dominance` + top discrete `emotion` (joy, sadness/grief, fear, anger, disgust, surprise, shame, pride, love/affection), `fatigue`, `hunger`, `pain`, `sickness`, `intoxication`, `cold/heat`, `wetness`, `attention_target` (look-at).
+
+**Social / paired:** `pair_id` + role (leader/follower) for hugs, fights, carrying another person, mother-infant nursing — only fulfilled as true paired animation at LOD0–1.
+
+Rules: tags are *requests*; the animation layer degrades gracefully (unknown action → nearest generic: "work_generic", "interact_generic"). Animation never writes to the sim except cosmetic event callbacks (footstep, impact frame for VFX/sound).
+
+### 2. Recommendations per art direction
+
+**A. 2D top-down / isometric sprites (cheapest, scales best to 1M):**
+- Humans: layered paper-doll sprite sheets (body base by life-stage × build bin, then head/hair/clothes/equipment layers, palette-swapped for genes); composite per individual into an atlas page on demand, or composite in a shader from layer indices.
+- Generate those sheets from a **3D → 2D bake pipeline** (Dead Cells approach): low-poly rig in Blender/Godot, procedural age/limp layers applied in 3D, rendered to pixel art at 4 or 8 directions. This keeps genetic proportion and injury variation without hand-drawing every combo.
+- Animals: Rain-World / argonautcode style **point-chain bodies** (MIT reference) with sprite segments for snakes, fish, lizards, insects; gait-generator + 2D IK legs for quadrupeds when zoomed in; baked flipbooks at distance.
+- Close-up / followed person: optional runtime 2D skeletal rig (Godot Skeleton2D or Spine) driven procedurally; portraits with **Inochi2D** (BSD-2) for emotion.
+- Engines/libraries: Godot 4 (2D) or PixiJS + DragonBones runtime (MIT); Spine if budget allows (commercial).
+
+**B. 2.5D (3D world, fixed-ish camera, stylised):**
+- Same as C below for close tiers, but far tiers are billboard impostors/VAT; favours Godot 4.6 (IK family, spring bones, retargeting) or Bevy.
+
+**C. Stylised low-poly 3D:**
+- One shared humanoid skeleton per body plan; **retarget** all clips; per-bone scale for genes; **additive procedural layers** (lean, limp, age posture, emotion posture, breathing) + **two-bone IK** foot planting + look-at + spring bones at LOD0.
+- Locomotion: Overgrowth-style few-pose, distance-driven cycles or a small blend space; **motion matching only for the followed hero** if we have enough licensed mocap (Holden MIT code + our data).
+- Crowds: GPU skinning with bone textures (LOD2) → VAT (LOD3) → impostors (LOD4).
+- Animals: procedural gait generator with Froude-number gait selection, two-bone IK legs, CCD/FABRIK tails & necks; VAT at distance; boids for flocks/schools.
+- Libraries: Godot 4.6 (MIT) **or** Bevy (MIT/Apache) + bevy_open_vat + bevy_hanabi; ozz-animation (MIT) if custom C++/Rust (via FFI); Babylon.js for a web build.
+
+### 3. Animation LOD table
+
+| Tier | When | Agents (typ.) | Humans | Animals | Face/emotion | Update rate |
+|---|---|---|---|---|---|---|
+| **LOD0 Observed individual** | followed/selected, < ~10 m | 1–20 | Full skeletal: clip/blend or motion matching + all procedural layers (age, limp, emotion posture), foot IK, hand IK for carry/tools, look-at, spring bones, active ragdoll on fall/death, paired interactions, lip flaps/visemes | Procedural gait + IK, tail/ear springs, breathing | Blendshapes/FACS (3D) or sprite face swaps / Inochi2D portrait (2D) | every frame |
+| **LOD1 Nearby** | on screen, close | 20–300 | Skeletal blend tree + additive age/limp/emotion layers, foot IK only on slopes, simple look-at; no ragdoll (canned fall) | Procedural gait, no springs | Coarse expression (3–5 presets) | every frame, IK every 2nd |
+| **LOD2 Village-scale crowd** | mid distance | 300–10k | GPU-skinned instanced meshes; clip id + phase + per-instance bone scale + 1 additive posture slot (elderly/limp/sad) | GPU-skinned or VAT; boids for groups | none | anim state from AIR on change; GPU playback |
+| **LOD3 Region** | far | 10k–200k | VAT on 100–300-vertex meshes or 8-direction flipbook sprites; ~6 clip classes (idle, walk, run, work, carry, lie) | VAT/flipbook, boids | none | GPU only |
+| **LOD4 Map-scale** | whole map | 200k–1M+ | Impostor quads / dots with 2–4-frame bob; colour by activity | dots/particles, herd blobs | none | GPU, sim-tick rate |
+
+Promotion/demotion keeps continuity (same clip class & phase) — AC Unity "AI recycling" pattern. Time-scaling > ~20× forces everything to ≤ LOD2.
+
+### 4. How genetic / age / injury variation is expressed procedurally
+- **Skeleton level** (3D or bake pipeline): per-bone scale curves by `age_norm` × `height` × `limb_ratio`; mass/build → spine/hip width and blend-shape "build" morph.
+- **Timing level**: cadence & stride from leg length and speed (no foot sliding: drive phase from distance travelled); gait selection by Froude number for animals; asymmetric phase for limps.
+- **Pose level**: additive layers weighted by modifiers (elderly hunch, pain guarding of the injured part, sadness slump, fear crouch, pride chest-out, fatigue droop).
+- **Physics level** (LOD0 only, optional): spring bones, ragdoll falls; offline RL controllers (MimicKit) to generate physically-plausible limp/cane/elderly clips for the library.
+- **Surface level**: palette genes, pattern masks, scars/bandages decals, grey hair with age, clothing layers.
+- **2D**: the same parameters choose bins in the baked atlas (life-stage × build × limp side/severity bin × emotion posture) plus runtime squash/bob tweaks.
+
+### 5. Offline AI-generated animation pipeline vs runtime
+- **Offline (recommended):** prompt library derived from the AIR action list × modifiers ("an elderly woman with a limp on her left leg carries firewood") → **NVIDIA Kimodo** (Apache code / NVIDIA Open Model weights, trained on commercially licensed mocap) or **ARDY** for long streamed sequences → retarget SOMA → our rig → automated cleanup (foot-contact detection + IK locking, root smoothing, loop-closing) → human animator review → tag clip with AIR metadata → compress (ACL/ozz) → bake to VAT/sprite atlases for lower tiers. Use motion→text captioning only from commercially clean models. Keep a provenance log (model, version, licence, prompt, date) for every clip.
+- **Video models for 2D** (Wan 2.2, Apache-2.0; Animate-14B): concept and VFX loops; sprite frames only with heavy artist cleanup.
+- **Runtime AI:** not for crowds. Possible later as an *optional* high-end "cinematic follow" mode (ARDY real-time on RTX-class GPU), strictly view-only and with a procedural fallback.
+- Animals: no commercially clean generative models yet → procedural + hand-keyed accents.
+
+### 6. Licensing checklist
+- [ ] Every mocap/clip source logged with licence: allowed = own capture, CMU (no resale), Mixamo (no redistribution of raw files, **no ML training**), purchased packs (check "AI training" clauses), Kimodo/ARDY outputs (NVIDIA Open Model License — legal to review attribution & use clauses).
+- [ ] **Banned for shipping:** LAFAN1 (CC BY-NC-ND), AMASS & SMPL/SMPL-X (non-commercial unless licensed via Meshcapade), AI4Animation code+data (CC BY-NC), MotionLCM (custom non-commercial), any checkpoint trained on HumanML3D/KIT/AMASS (MDM, MoMask, T2M-GPT, MotionGPT weights), Bones SEED (academic/startup only without commercial licence), Audio2Emotion outside Audio2Face.
+- [ ] Territory-restricted: Tencent HY-Motion 1.0 (excludes EU/UK/South Korea) — don't use for a global release.
+- [ ] Revenue-threshold licences: Spine (>US$500k → Enterprise), Live2D (>¥10M sales → publication licence), Stability Community (>US$1M → Enterprise), Unity/Unreal engine terms.
+- [ ] Copyleft: LPC art layers (CC-BY-SA / GPL-3.0 pieces) — filter to CC0/CC-BY/OGA-BY or accept share-alike on art; GPL tools (OpenVAT add-on) are fine as tools, never link GPL code into the game.
+- [ ] Unity Companion Licence code (Latios, Animation-Instancing) only usable with Unity.
+- [ ] Patents: age-related gait transformation (US 11129551) — avoid copying that method; general motion-matching/IK are long-standing public techniques but get counsel review before launch.
+- [ ] Credits file auto-generated from the provenance log (CC-BY attributions, MIT/Apache notices, Spine runtime licence text).
+- [ ] AI-output copyright: purely AI-generated clips may be unprotectable (US) — keep human edits documented.
+
+### 7. Open questions / risks
+1. **Art direction decision** drives everything: 2D sprites cut cost and scale to 1M, but bake combinatorics (species × life stage × build × injury × action × direction) can explode atlas memory — need a bin budget and runtime layer compositing.
+2. **Animal animation is the hardest content problem**: no commercial-clean data/models for quadrupeds; we must build a solid procedural gait system early (prototype wolf, rabbit, bird, fish, insect).
+3. **Paired interactions** (carry child, fight, mate, nurse, hug) are where believability lives and where procedural systems struggle; budget hand-keyed paired clips with IK fix-ups for the main ~20 interactions.
+4. **Time-scaling**: animation tiers must degrade instantly when the god speeds time; avoid systems whose state can't be fast-forwarded (springs/ragdolls must reset).
+5. **Consistency across LOD swaps** (pop when zooming): keep clip class/phase continuous; cross-fade impostor→mesh.
+6. **GPU state for 1M agents**: AIR must be packed; sim→GPU upload bandwidth per tick needs measuring (~32 B × 1M = 32 MB per full update — so send deltas only).
+7. **Licence review** of NVIDIA Open Model License and any future Kimodo/ARDY versions; models update fast (2026 alone: Kimodo, ARDY, HY-Motion) — re-check quarterly.
+8. **Uncanny valley**: realistic faces + generated motion risk creepiness; prefer stylisation.
+9. **Engine choice** for a Rust ECS sim (Bevy) vs Godot tooling vs custom: animation tooling maturity favours Godot; scale favours custom/Bevy GPU-driven paths.
+10. Items marked *unverified* above (exact star counts/dates of some repos, Spore patent status, cainrademan/Unity-Grass licence, 2d-space-colonization licence, PixelLab ToS) should be re-checked before decisions.
