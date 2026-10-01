@@ -319,8 +319,8 @@ pub fn inspect_json(sim: &Sim, id: u32) -> String {
         // Live decision trace (only recorded for the selected human).
         match &m.last_trace {
             Some(tr) if !tr.asleep => {
-                let _ = write!(o, "\"trace\":{},\"trace_text\":{},", tr.to_json(), q(&tr.to_text()));
-                let _ = write!(o, "\"graph\":{},", brain_graph(tr));
+                let _ = write!(o, "\"trace\":{},\"trace_text\":{},", observer_names(sim, c, &tr.to_json()), q(&observer_names(sim, c, &tr.to_text())));
+                let _ = write!(o, "\"graph\":{},", observer_names(sim, c, &brain_graph(tr)));
             }
             Some(_) => o.push_str("\"trace\":null,\"trace_text\":\"Asleep. (Sleep consolidates memories.)\",\"graph\":null,"),
             None => o.push_str("\"trace\":null,\"trace_text\":\"Select this person and let time run to watch them think.\",\"graph\":null,"),
@@ -337,6 +337,29 @@ pub fn inspect_json(sim: &Sim, id: u32) -> String {
     let _ = write!(o, "\"nearby\":[{}]", near.join(","));
     o.push('}');
     o
+}
+
+/// Observer view only: replace the mind's private, meaningless tokens ("thing#51d1")
+/// with what the player can see is really there ("berry bush"). The mind never
+/// receives these names; this is applied to the exported text after the fact.
+fn observer_names(sim: &Sim, c: &Creature, text: &str) -> String {
+    if !text.contains("thing#") {
+        return text.to_string();
+    }
+    let mut out = text.to_string();
+    for (tk, t) in &c.tokens {
+        let key = format!("thing#{:04x}", tk.0 & 0xffff);
+        if !out.contains(&key) {
+            continue;
+        }
+        let name = match *t {
+            Target::Obj(id) => sim.objs.iter().find(|o| o.id == id).map(obj_name).unwrap_or_else(|| "something".into()),
+            Target::Water(..) => "water".into(),
+            Target::Creature(id) => name_of(sim, id),
+        };
+        out = out.replace(&key, &name);
+    }
+    out
 }
 
 fn ago_text(t: u64) -> String {

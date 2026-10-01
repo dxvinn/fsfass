@@ -88,6 +88,8 @@ pub struct AnimalBrain {
     pub target: Option<u32>,
     pub state: &'static str,
     pub flee_from: Option<(i32, i32)>,
+    /// Predators back off after biting a human until this tick.
+    pub retreat_until: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -186,11 +188,15 @@ pub struct Sim {
     pub prof_sense_ns: u64,
     pub prof_mind_ns: u64,
     pub prof_rest_ns: u64,
+    /// Steps to the nearest drinkable water over walkable land (animal navigation);
+    /// empty means "recompute".
+    pub water_dist: Vec<u16>,
 }
 
 fn props_for(kind: ObjKind) -> ObjProps {
     match kind {
-        ObjKind::BerryBush => ObjProps { portions: 10, max_portions: 10, ..ObjProps::berries() },
+        // A whole bush laden with berries: each portion is a good handful (60 kcal).
+        ObjKind::BerryBush => ObjProps { portions: 20, max_portions: 20, kcal_per_portion: fx(60.0), water_per_portion: fx(15.0), ..ObjProps::berries() },
         ObjKind::Fire => ObjProps::fire_a(),
         ObjKind::Stone => ObjProps::rock(),
         ObjKind::Flint => ObjProps {
@@ -341,6 +347,7 @@ impl Sim {
             deaths: 0,
             prof_sense_ns: 0,
             prof_mind_ns: 0,
+            water_dist: Vec::new(),
             prof_rest_ns: 0,
         };
         s.populate();
@@ -464,21 +471,35 @@ impl Sim {
                 }
             }
         }
-        for _ in 0..34 {
-            if let Some((x, y)) = self.random_land(&mut r, None, 0) {
-                if matches!(self.tile(x, y).biome, Biome::Grass | Biome::Forest) {
-                    let age = 1 + r.below(6) as i64;
-                    let female = r.below(2) == 0;
-                    self.spawn_animal(Kind::Grazer, x, y, age, female);
+        // Six grazer herds of about six animals on open grassland.
+        for _herd in 0..6 {
+            for _try in 0..200 {
+                if let Some((x, y)) = self.random_land(&mut r, None, 0) {
+                    if self.tile(x, y).biome == Biome::Grass {
+                        for k in 0..6 {
+                            let age = 1 + r.below(6) as i64;
+                            if let Some((gx, gy)) = self.random_land(&mut r, Some((x, y)), 3) {
+                                self.spawn_animal(Kind::Grazer, gx, gy, age, k % 2 == 0);
+                            }
+                        }
+                        break;
+                    }
                 }
             }
         }
-        for _ in 0..7 {
-            if let Some((x, y)) = self.random_land(&mut r, None, 0) {
-                if matches!(self.tile(x, y).biome, Biome::Forest | Biome::Hills) {
-                    let age = 2 + r.below(5) as i64;
-                    let female = r.below(2) == 0;
-                    self.spawn_animal(Kind::Predator, x, y, age, female);
+        // Two wolf packs of three, each in forest or hills.
+        for _pack in 0..2 {
+            for _try in 0..200 {
+                if let Some((x, y)) = self.random_land(&mut r, None, 0) {
+                    if matches!(self.tile(x, y).biome, Biome::Forest | Biome::Hills) {
+                        for k in 0..3 {
+                            let age = 2 + r.below(5) as i64;
+                            if let Some((wx, wy)) = self.random_land(&mut r, Some((x, y)), 2) {
+                                self.spawn_animal(Kind::Predator, wx, wy, age, k % 2 == 0);
+                            }
+                        }
+                        break;
+                    }
                 }
             }
         }
@@ -704,9 +725,9 @@ impl Sim {
 
     /// Air temperature at a tile (°C).
     pub fn temperature(&self, x: i32, y: i32) -> Fx {
-        let season = [fx(14.0), fx(23.0), fx(13.0), fx(2.0)][self.season() as usize];
+        let season = [fx(15.0), fx(23.0), fx(14.0), fx(4.0)][self.season() as usize];
         let h = Fx::ratio(self.time_of_day() as i64, 3600);
-        let diurnal = if h > fx(6.0) && h < fx(20.0) { fx(4.0) } else { fx(-5.0) };
+        let diurnal = if h > fx(6.0) && h < fx(20.0) { fx(4.0) } else { fx(-4.0) };
         let elev = Fx::from_int(self.tile(x, y).elev.max(400) as i64 - 400) / fx(60.0);
         let weather = match self.weather {
             Weather::Rain => fx(-3.0),
@@ -800,13 +821,19 @@ impl Sim {
             let y = r.below(self.h as u64) as i32;
             lightning = Some((x, y));
         }
+        let mut seeds: Vec<(i32, i32)> = Vec::new();
         for o in self.objs.iter_mut().filter(|o| o.alive) {
             match o.kind {
                 ObjKind::BerryBush => {
+                    // Fruiting: fastest in late summer/autumn, slow in winter.
                     o.timer += 600;
-                    if o.timer > 6 * 3600 && o.props.portions < o.props.max_portions && season != 3 {
+                    let every = [2400, 1800, 1500, 7200][season as usize];
+                    if o.timer > every && o.props.portions < o.props.max_portions {
                         o.props.portions += 1;
                         o.timer = 0;
+                    }
+                    if o.props.portions == o.props.max_portions && season != 3 && r.below(400) == 0 {
+                        seeds.push((o.x, o.y));
                     }
                 }
                 ObjKind::Carcass | ObjKind::Remains => {
@@ -820,6 +847,26 @@ impl Sim {
         }
         if let Some((x, y)) = lightning {
             self.strike_lightning(x, y, false);
+        }
+        // Plants spread: a laden bush drops seeds that may take root on fertile ground
+        // nearby, unless the spot is already crowded.
+        let bushes = self.objs.iter().filter(|o| o.alive && o.kind == ObjKind::BerryBush).count();
+        for (sx, sy) in seeds {
+            if bushes > 600 {
+                break;
+            }
+            let nx = sx + r.below(9) as i32 - 4;
+            let ny = sy + r.below(9) as i32 - 4;
+            if !self.in_bounds(nx, ny) || !matches!(self.tile(nx, ny).biome, Biome::Grass | Biome::Forest) {
+                continue;
+            }
+            let crowd = self.objs.iter().filter(|o| o.alive && o.kind == ObjKind::BerryBush && cheb(o.x, o.y, nx, ny) <= 3).count();
+            if crowd < 3 {
+                let id = self.add_obj(ObjKind::BerryBush, nx, ny);
+                if let Some(o) = self.objs.iter_mut().find(|o| o.id == id) {
+                    o.props.portions = 0;
+                }
+            }
         }
         self.objs.retain(|o| o.alive || o.kind == ObjKind::BerryBush);
         // Berry bushes re-sprout when emptied.
@@ -1033,9 +1080,17 @@ impl Sim {
                     let o = self.objs.iter().find(|o| o.id == oid).expect("alive");
                     let p = &o.props;
                     let osc = rng.unit() - Fx::HALF;
+                    // A bush shows its berries only while it has them; stripped, it is green leaves.
+                    let (hue, sat) = if o.kind == ObjKind::BerryBush {
+                        let full = Fx::ratio(p.portions.max(0) as i64, p.max_portions.max(1) as i64);
+                        let berry = (full * fx(3.0)).min(Fx::ONE);
+                        (fx(110.0) + (p.hue_deg - fx(110.0)) * berry, fx(0.45) + (p.saturation - fx(0.45)) * berry)
+                    } else {
+                        (p.hue_deg, p.saturation)
+                    };
                     let v = Visual {
-                        hue_deg: p.hue_deg,
-                        saturation: p.saturation,
+                        hue_deg: hue,
+                        saturation: sat,
                         brightness: (p.emit * (Fx::ONE + p.flicker * osc) + p.reflect * light * fx(0.6)).clamp01(),
                         flicker: (p.flicker * (fx(0.85) + rng.unit() * fx(0.3))).clamp01(),
                         size: p.size,
@@ -1190,9 +1245,22 @@ impl Sim {
                 rad += Self::radiant(o, x, y);
             }
         }
+        // What the skin effectively feels: air temperature, plus metabolic heat (more
+        // when active), plus shelter under forest canopy, plus body heat shared with
+        // humans lying or standing right next to you. Physics only: whether to stay
+        // near others or under trees is the mind's own choice.
+        let metabolic = if self.creatures[i].body.asleep { fx(3.0) } else { fx(6.0) };
+        let canopy = if self.tile(x, y).biome == terrain::Biome::Forest { fx(3.0) } else { Fx::ZERO };
+        let huddle = self
+            .creatures
+            .iter()
+            .filter(|o| o.alive && o.kind == Kind::Human && o.id != self.creatures[i].id && cheb(o.x, o.y, x, y) <= 1)
+            .take(3)
+            .count() as i64;
+        let felt_air = ambient + metabolic + canopy + fx(1.5) * Fx::from_int(huddle);
         {
             let c = &mut self.creatures[i];
-            c.body.ambient_c = ambient;
+            c.body.ambient_c = felt_air;
             c.body.add_radiant(rad);
             c.social_comfort = c.social_comfort * fx(0.9);
             if let Some((Target::Obj(oid), site)) = c.reaching {
@@ -1265,6 +1333,13 @@ impl Sim {
         }
     }
 
+    fn attachment_figure(&self, i: usize) -> Option<(i32, i32)> {
+        let c = &self.creatures[i];
+        let young = self.age_years(c) < fx(12.0);
+        let who = if young { c.mother.or(c.partner) } else { c.partner };
+        who.and_then(|id| self.creatures.iter().find(|o| o.id == id && o.alive)).map(|o| (o.x, o.y))
+    }
+
     fn execute_human(&mut self, i: usize, cmd: MotorCommand) -> MotorResult {
         if self.creatures[i].body.asleep {
             self.creatures[i].reaching = None;
@@ -1282,6 +1357,16 @@ impl Sim {
         match cmd {
             MotorCommand::Rest => MotorResult::Ok,
             MotorCommand::Wander { dir } => {
+                // Innate attachment prior (species-level, like the grazers' fear of wolves):
+                // undirected wandering drifts back toward a distant partner, or a young
+                // child's mother. Targeted actions are untouched; they are the mind's.
+                if let Some((ax, ay)) = self.attachment_figure(i) {
+                    let (x, y) = (self.creatures[i].x, self.creatures[i].y);
+                    let mut r = self.rng(self.creatures[i].id as u64, stream::PHYSICS ^ 0xA77A);
+                    if cheb(ax, ay, x, y) > 5 && r.chance(fx(0.75)) && self.step_toward(i, ax, ay, true) {
+                        return MotorResult::Ok;
+                    }
+                }
                 let (dx, dy) = DIRS[(dir % 8) as usize];
                 let (nx, ny) = (self.creatures[i].x + dx, self.creatures[i].y + dy);
                 if self.walkable(nx, ny) {
@@ -1607,12 +1692,12 @@ impl Sim {
                     dh -= fx(0.03);
                     cause = Some("thirst");
                 }
-                if c.body.thermal < fx(-0.7) {
-                    dh -= fx(0.015);
+                if c.body.thermal < fx(-0.8) {
+                    dh -= fx(0.008);
                     cause = Some("cold");
                 }
                 if c.body.damage_body > fx(0.7) {
-                    dh -= fx(0.03);
+                    dh -= fx(0.015);
                     cause = Some("wounds");
                 }
                 if self.tick < c.cursed_until {
@@ -1652,7 +1737,7 @@ impl Sim {
                         let close = self.creatures.iter().any(|o| o.id == p && o.alive && cheb(o.x, o.y, self.creatures[i].x, self.creatures[i].y) <= 3);
                         let c = &mut self.creatures[i];
                         let fed = c.body.signals.hunger < fx(0.7);
-                        if close && fed && r.chance(fx(0.02) * (fx(0.5) + c.traits.fertility)) {
+                        if close && fed && r.chance(fx(0.04) * (fx(0.5) + c.traits.fertility)) {
                             c.pregnant = Some((p, self.tick + TICKS_PER_YEAR * 3 / 4));
                             let name = c.name.clone();
                             let (x, y) = (c.x, c.y);
@@ -1677,8 +1762,8 @@ impl Sim {
                     let (x, y) = (c.x, c.y);
                     let pop = self.creatures.iter().filter(|o| o.alive && o.kind == kind).count();
                     let cap = if kind == Kind::Grazer { 80 } else { 14 };
-                    let mate = self.creatures.iter().any(|o| o.alive && o.kind == kind && !o.female && cheb(o.x, o.y, x, y) <= 6);
-                    if mate && pop < cap && r.chance(fx(0.01)) {
+                    let mate = self.creatures.iter().any(|o| o.alive && o.kind == kind && !o.female && cheb(o.x, o.y, x, y) <= 20);
+                    if mate && pop < cap && r.chance(if kind == Kind::Grazer { fx(0.05) } else { fx(0.012) }) {
                         self.creatures[i].pregnant = Some((0, self.tick + TICKS_PER_YEAR / 2));
                     }
                 }
@@ -1738,6 +1823,9 @@ impl Sim {
         let (x, y, kind, id) = (c.x, c.y, c.kind, c.id);
         let name = c.name.clone();
         let age = self.age_years(&self.creatures[i]).floor_int();
+        if std::env::var_os("GENESIS_DEBUG_DEATHS").is_some() {
+            eprintln!("death t={} kind={:?} cause={cause} age={age}", self.tick, kind);
+        }
         if kind == Kind::Human {
             self.deaths += 1;
             self.record("death", format!("{name} died of {cause} at age {age}."), x, y, true);
@@ -1768,8 +1856,10 @@ impl Sim {
         let interval = self.animal_interval.max(1) as u64;
         let id = self.creatures[i].id as u64;
         {
+            // Predators gorge and then fast for a day or two; grazers eat steadily.
+            let pred = self.creatures[i].kind == Kind::Predator;
             let a = &mut self.creatures[i].animal;
-            a.energy -= fx(0.000012);
+            a.energy -= if pred { fx(0.000005) } else { fx(0.000012) };
             a.water -= fx(0.000016);
             a.fatigue += fx(0.000008);
         }
@@ -1812,9 +1902,21 @@ impl Sim {
                 self.forage(i, &mut r, true);
             }
             Kind::Predator => {
+                if self.tick < self.creatures[i].animal.retreat_until {
+                    if let Some((tx, ty)) = self.creatures[i].animal.flee_from {
+                        self.step_toward(i, tx, ty, false);
+                        self.creatures[i].action = "backing off".into();
+                        return;
+                    }
+                }
+                // Thirst comes before the hunt.
+                if self.creatures[i].animal.water < fx(0.3) {
+                    self.forage(i, &mut r, false);
+                    return;
+                }
                 let hunger = Fx::ONE - self.creatures[i].animal.energy;
-                if hunger > fx(0.45) {
-                    // Eat from a carcass if one is close.
+                // Gorge on any carcass nearby until full; hunt only when truly hungry.
+                if hunger > fx(0.1) {
                     if let Some(oi) = self.objs.iter().position(|o| o.alive && o.kind == ObjKind::Carcass && cheb(o.x, o.y, x, y) <= 8) {
                         let (ox, oy) = (self.objs[oi].x, self.objs[oi].y);
                         if cheb(ox, oy, x, y) <= 1 {
@@ -1830,12 +1932,18 @@ impl Sim {
                         }
                         return;
                     }
+                }
+                if hunger > fx(0.55) {
                     // Hunt: grazers, or humans when very hungry.
                     let prey = self
                         .creatures
                         .iter()
                         .enumerate()
-                        .filter(|(_, o)| o.alive && (o.kind == Kind::Grazer || (o.kind == Kind::Human && hunger > fx(0.75))))
+                        .filter(|(_, o)| {
+                            o.alive
+                                && (o.kind == Kind::Grazer
+                                    || (o.kind == Kind::Human && hunger > fx(0.85) && self.humans_near(o.x, o.y, 2) < 3))
+                        })
                         .map(|(j, o)| (cheb(o.x, o.y, x, y), j))
                         .filter(|(d, _)| *d <= 12)
                         .min();
@@ -1856,6 +1964,10 @@ impl Sim {
         }
     }
 
+    fn humans_near(&self, x: i32, y: i32, r: i32) -> usize {
+        self.creatures.iter().filter(|o| o.alive && o.kind == Kind::Human && cheb(o.x, o.y, x, y) <= r).count()
+    }
+
     fn attack(&mut self, i: usize, j: usize) {
         let mut r = self.rng(self.creatures[i].id as u64, stream::PHYSICS ^ 0xA7);
         self.creatures[i].action = "attacking".into();
@@ -1864,7 +1976,11 @@ impl Sim {
         }
         let (tx, ty) = (self.creatures[j].x, self.creatures[j].y);
         if self.creatures[j].kind == Kind::Human {
-            self.creatures[j].body.wound(fx(0.18));
+            // Wolves bite and back off rather than fight a standing human to the death.
+            self.creatures[i].animal.flee_from = Some((tx, ty));
+            self.creatures[i].animal.retreat_until = self.tick + 1800;
+            self.creatures[i].animal.energy = (self.creatures[i].animal.energy + fx(0.05)).min(Fx::ONE);
+            self.creatures[j].body.wound(fx(0.16));
             let name = self.creatures[j].name.clone();
             self.record("attack", format!("A wolf attacked {name}."), tx, ty, false);
             self.first("wolf-attack", format!("A wolf attacked a human for the first time: {name}."), tx, ty);
@@ -1895,15 +2011,11 @@ impl Sim {
                 self.creatures[i].action = "drinking".into();
                 return;
             }
-            let target = a.last_water.or_else(|| self.nearest_water(x, y, 14));
-            if let Some((wx, wy)) = target {
-                if !self.step_toward(i, wx, wy, true) || cheb(x, y, wx, wy) == 0 {
-                    self.creatures[i].animal.last_water = None;
-                    self.wander(i, r);
-                }
-                self.creatures[i].action = "looking for water".into();
-                return;
+            if !self.step_to_water(i) {
+                self.wander(i, r);
             }
+            self.creatures[i].action = "going to water".into();
+            return;
         }
         if grazer && a.energy < fx(0.8) {
             let g = self.tile(x, y).grass;
@@ -1947,20 +2059,65 @@ impl Sim {
         }
     }
 
-    fn nearest_water(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32)> {
-        let mut best: Option<(i32, i32, i32)> = None;
-        for dy in -radius..=radius {
-            for dx in -radius..=radius {
-                let (nx, ny) = (x + dx, y + dy);
-                if self.in_bounds(nx, ny) && self.tile(nx, ny).is_water() {
-                    let d = cheb(x, y, nx, ny);
-                    if best.map_or(true, |b| d < b.0) {
-                        best = Some((d, nx, ny));
-                    }
+    /// Breadth-first distance field from every water tile across walkable land.
+    fn ensure_water_dist(&mut self) {
+        if !self.water_dist.is_empty() {
+            return;
+        }
+        let (w, h) = (self.w, self.h);
+        let mut d = vec![u16::MAX; (w * h) as usize];
+        let mut q = std::collections::VecDeque::new();
+        for y in 0..h {
+            for x in 0..w {
+                if self.tile(x, y).is_water() {
+                    d[(y * w + x) as usize] = 0;
+                    q.push_back((x, y));
                 }
             }
         }
-        best.map(|b| (b.1, b.2))
+        while let Some((x, y)) = q.pop_front() {
+            let nd = d[(y * w + x) as usize] + 1;
+            for (dx, dy) in DIRS {
+                let (nx, ny) = (x + dx, y + dy);
+                if nx < 0 || ny < 0 || nx >= w || ny >= h {
+                    continue;
+                }
+                let k = (ny * w + nx) as usize;
+                if d[k] > nd && self.tile(nx, ny).walkable() {
+                    d[k] = nd;
+                    q.push_back((nx, ny));
+                }
+            }
+        }
+        self.water_dist = d;
+    }
+
+    /// One step down the water distance field. False if no path exists.
+    fn step_to_water(&mut self, i: usize) -> bool {
+        self.ensure_water_dist();
+        let (x, y) = (self.creatures[i].x, self.creatures[i].y);
+        let w = self.w;
+        let here = self.water_dist[(y * w + x) as usize];
+        let mut best: Option<(u16, i32, i32)> = None;
+        for (dx, dy) in DIRS {
+            let (nx, ny) = (x + dx, y + dy);
+            if !self.in_bounds(nx, ny) {
+                continue;
+            }
+            let d = self.water_dist[(ny * w + nx) as usize];
+            if d < here && (d == 0 || self.walkable(nx, ny)) && best.map_or(true, |b| d < b.0) {
+                best = Some((d, nx, ny));
+            }
+        }
+        match best {
+            Some((0, _, _)) => true, // water is adjacent: drink next turn
+            Some((_, nx, ny)) => {
+                self.creatures[i].x = nx;
+                self.creatures[i].y = ny;
+                true
+            }
+            None => false,
+        }
     }
 
     // ------------------------------------------------------------------ god powers
@@ -2030,6 +2187,7 @@ impl Sim {
                     }
                 }
                 self.objs.retain(|o| !(cheb(o.x, o.y, x, y) <= 2 && (o.x - x).pow(2) + (o.y - y).pow(2) <= 5) || o.kind == ObjKind::Fire);
+                self.water_dist.clear();
                 self.record("god", "God made a pond.".into(), x, y, false);
                 "A pond appeared".into()
             }

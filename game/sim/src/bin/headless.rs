@@ -29,6 +29,13 @@ fn main() {
                 sim.selected = None;
             }
         }
+        if std::env::var_os("PAIRS").is_some() {
+            for c in sim.creatures.iter().filter(|c| c.alive && c.kind == Kind::Human && c.female) {
+                if let Some(p) = c.partner.and_then(|p| sim.creatures.iter().find(|o| o.id == p)) {
+                    println!("pair {} ({:.0}) - {} dist {} hunger {:.2} preg {}", c.name, sim.age_years(c).to_f64(), p.name, (c.x - p.x).abs().max((c.y - p.y).abs()), c.body.signals.hunger.to_f64(), c.pregnant.is_some());
+                }
+            }
+        }
         if h % 6 == 5 {
             let humans: Vec<String> = sim
                 .creatures
@@ -78,6 +85,7 @@ fn clone_shell(s: &Sim) -> Sim {
         deaths: 0,
         prof_sense_ns: 0,
         prof_mind_ns: 0,
+        water_dist: Vec::new(),
         prof_rest_ns: 0,
     }
 }
